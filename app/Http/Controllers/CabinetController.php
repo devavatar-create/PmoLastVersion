@@ -134,8 +134,14 @@ class CabinetController extends Controller
             ->latest()
             ->paginate(30, pageName: 'comment_page');
 
+        // ‹ n / N › between the project's cabinets, in the order the project page lists them (by due date)
+        $siblings = $cabinet->project->cabinets()->get(['id', 'mo_no', 'due_date'])
+            ->sortBy(fn ($c) => [$c->due_date?->format('Y-m-d') ?? '9999', $c->id])->values();
+        $at = $siblings->search(fn ($c) => $c->id === $cabinet->id);
+
         return view('cabinets.show', [
             'cabinet' => $cabinet,
+            'siblings' => ['prev' => $at > 0 ? $siblings[$at - 1] : null, 'next' => $siblings[$at + 1] ?? null, 'at' => $at + 1, 'count' => $siblings->count()],
             'subtaskStatuses' => \App\Models\CabinetSubtask::$statuses,
             'departments' => \App\Models\Department::orderBy('name')->get(),
             'users' => \App\Models\User::orderBy('name')->get(),

@@ -253,3 +253,28 @@ html { scrollbar-gutter: stable; }
     }
     .pmo-cab-head { display: grid; }
 }
+
+/* Cabinet page work list: one row per sub task. Narrow: name + actions, department, then due and progress side by side.
+   Wide enough: name | department & dispatch step | due | progress | actions. */
+.pmo-work-table { container-type: inline-size; }
+.pmo-work-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name act" "dept dept" "due pct";
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+}
+.pmo-work-grid > .a-name { grid-area: name; }
+.pmo-work-grid > .a-dept { grid-area: dept; }
+.pmo-work-grid > .a-due { grid-area: due; }
+.pmo-work-grid > .a-pct { grid-area: pct; min-width: 8rem; }
+.pmo-work-grid > .a-act { grid-area: act; }
+.pmo-work-head { display: none; }
+@container (min-width: 48rem) {
+    .pmo-work-grid {
+        grid-template-columns: minmax(10rem, 1.3fr) minmax(13rem, 1.5fr) 6.5rem 8rem 5.5rem;
+        grid-template-areas: "name dept due pct act";
+        column-gap: 1rem;
+    }
+    .pmo-work-head { display: grid; }
+}

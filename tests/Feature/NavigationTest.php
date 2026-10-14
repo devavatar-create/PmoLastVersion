@@ -65,6 +65,19 @@ class NavigationTest extends TestCase
         }
     }
 
+    public function test_the_cabinet_page_steps_to_the_projects_other_cabinets_in_due_date_order(): void
+    {
+        $this->cabinet->update(['due_date' => '2026-12-18']);
+        $early = Cabinet::forceCreate(['project_id' => $this->project->id, 'mo_no' => 'MO-EARLY', 'cabinet_name' => 'Cab', 'quantity' => 1, 'status' => 'not_started', 'progress' => 0, 'due_date' => '2026-11-01']);
+        $late = Cabinet::forceCreate(['project_id' => $this->project->id, 'mo_no' => 'MO-LATE', 'cabinet_name' => 'Cab', 'quantity' => 1, 'status' => 'not_started', 'progress' => 0, 'due_date' => '2027-01-20']);
+
+        $this->actingAs($this->admin)->get(route('cabinets.show', $this->cabinet))->assertOk()
+            ->assertSee('ตู้ 2 / 3')
+            ->assertSee('href="'.route('cabinets.show', $early).'"', false)
+            ->assertSee('href="'.route('cabinets.show', $late).'"', false);
+        $this->get(route('cabinets.show', $early))->assertSee('ตู้ 1 / 3')->assertDontSee('ตู้ก่อนหน้า');
+    }
+
     public function test_the_cabinet_page_crumb_lands_on_the_projects_mo_tab_and_is_html_even_when_json_is_asked(): void
     {
         $this->actingAs($this->admin)->get(route('cabinets.show', $this->cabinet))

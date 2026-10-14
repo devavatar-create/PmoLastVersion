@@ -4,7 +4,7 @@
             <x-back-link :href="route('projects.show', [$cabinet->project, 'tab' => 'cabinets'])" :label="$cabinet->project->project_no" />
             <a href="{{ route('projects.show', [$cabinet->project, 'tab' => 'cabinets']) }}" class="hidden text-sm text-slate-400 hover:text-slate-600 sm:inline">{{ $cabinet->project->project_no }}</a>
             <span class="hidden text-slate-300 sm:inline">/</span>
-            <h2 class="text-lg font-semibold text-slate-900">{{ $cabinet->mo_no }}</h2>
+            <h2 class="truncate text-lg font-semibold text-slate-900">{{ $cabinet->mo_no }}</h2>
         </div>
     </x-slot>
 
@@ -18,80 +18,72 @@
         $canFiles = auth()->user()->allows('data.files');   // Settings > สิทธิ์การใช้งาน
         $canComments = auth()->user()->allows('data.comments');
         $initialTab = in_array(request('tab'), array_merge(['tasks'], $canFiles ? ['attachments'] : [], $canComments ? ['comment', 'activity'] : [])) ? request('tab') : 'tasks';
+
+        // the work list's summary line: where each sub task is in the dispatch workflow, and how many are late
+        $allSubtasks = $cabinet->tasks->flatMap->subtasks;
+        $late = fn ($s) => $s->due_date && $s->due_date->lt(today()) && $s->status !== \App\Models\CabinetSubtask::STATUS_COMPLETED;
+        $byState = $allSubtasks->countBy('assignment_status');
+        $expectedLate = $cabinet->expected_completion_date && $cabinet->due_date && $cabinet->expected_completion_date->gt($cabinet->due_date);
+        $taskLabel = fn ($task, $i) => preg_match('/^\d+[.)]\s/u', $task->name) ? $task->name : ($i + 1).'. '.$task->name;   // templates often number their steps already
     @endphp
-    <div class="max-w-screen-2xl mx-auto space-y-6" x-data="{ tab: '{{ $initialTab }}' }" x-init="$watch('tab', (t) => keepTabInUrl(t, 'tasks'))">
+
+    <div class="max-w-screen-2xl mx-auto space-y-5" x-data="{ tab: '{{ $initialTab }}' }" x-init="$watch('tab', (t) => keepTabInUrl(t, 'tasks'))">
+
         <x-closed-project-banner :project="$cabinet->project" />
 
-        <x-card>
-            <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <h1 class="text-xl font-bold text-slate-900">{{ $cabinet->cabinet_name }}</h1>
-                        <x-status-badge :status="$cabinet->status" id="cabinet-{{ $cabinet->id }}" />
-                    </div>
-                    <dl class="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 mt-3 text-sm">
-                        <div><dt class="text-slate-400 text-xs">Cabinet Type</dt><dd class="font-medium text-slate-700">{{ $cabinet->cabinet_type ?? '-' }}</dd></div>
-                        <div><dt class="text-slate-400 text-xs">ขนาดตู้</dt><dd class="font-medium text-slate-700">{{ $cabinet->size ?? '-' }}</dd></div>
-                        <div><dt class="text-slate-400 text-xs">Quantity</dt><dd class="font-medium text-slate-700">{{ $cabinet->quantity }}</dd></div>
-                        <div><dt class="text-slate-400 text-xs">Start Date</dt><dd class="font-medium text-slate-700">{{ optional($cabinet->start_date)->thaiDate() ?? '-' }}</dd></div>
-                        <div><dt class="text-slate-400 text-xs">Due Date</dt><dd class="font-medium text-slate-700">{{ optional($cabinet->due_date)->thaiDate() ?? '-' }}</dd></div>
-                        <div>
-                            <dt class="text-slate-400 text-xs">วันคาดว่าจะเสร็จ</dt>
-                            <dd class="font-medium {{ $cabinet->expected_completion_date && $cabinet->due_date && $cabinet->expected_completion_date->gt($cabinet->due_date) ? 'text-red-600' : 'text-slate-700' }}">
-                                {{ optional($cabinet->expected_completion_date)->thaiDate() ?? '-' }}
-                            </dd>
-                        </div>
-                        <div><dt class="text-slate-400 text-xs">วันทำงานทั้งหมด (ไม่รวมเสาร์-อาทิตย์)</dt><dd class="font-medium text-slate-700">{{ $cabinet->total_working_days !== null ? $cabinet->total_working_days.' วัน' : '- (ต้องตั้ง Start/Due Date ก่อน)' }}</dd></div>
-                    </dl>
-                </div>
-                <div class="flex gap-2 shrink-0">
-                    @editplan
-                    <a href="{{ route('cabinets.edit', $cabinet) }}" class="px-3 py-2 rounded-lg bg-slate-100 text-sm font-medium text-slate-700 hover:bg-slate-200">Edit</a>
-                    <form method="POST" action="{{ route('cabinets.destroy', $cabinet) }}" onsubmit="return confirm('ยืนยันการลบตู้ {{ $cabinet->mo_no }} นี้? Task/Sub Task/Checklist ทั้งหมดของตู้นี้จะย้ายไปถังขยะ (Admin/PM กู้คืนได้)')">
-                        @csrf @method('DELETE')
-                        <button class="px-3 py-2 rounded-lg bg-red-50 text-sm font-medium text-red-600 hover:bg-red-100">Delete</button>
-                    </form>
-                    @endeditplan
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <h1 class="break-words text-xl font-bold text-ae-navy">{{ $cabinet->mo_no }}</h1>
+                <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                    <span>{{ $cabinet->cabinet_name }}</span>
+                    <x-status-badge :status="$cabinet->status" id="cabinet-{{ $cabinet->id }}" />
+                    @if ($cabinet->status !== \App\Models\Cabinet::STATUS_COMPLETED && $cabinet->days_remaining !== null && $cabinet->days_remaining < 0)
+                        <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700"><span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>เลยกำหนด {{ abs($cabinet->days_remaining) }} วัน</span>
+                    @endif
                 </div>
             </div>
-
-            <div class="mt-5">
-                <div class="flex items-center justify-between mb-1">
-                    <span class="text-xs font-medium text-slate-500">Cabinet Progress</span>
-                    <div class="flex items-center gap-2">
-                        <span class="text-sm font-bold text-slate-800" id="progress-value-cabinet-{{ $cabinet->id }}">{{ $cabinet->progress }}%</span>
-                        <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            <span id="checklist-count-cabinet-{{ $cabinet->id }}">{{ $cabinet->checklist_counts['completed'] }}/{{ $cabinet->checklist_counts['total'] }}</span> Checklists
-                        </span>
-                    </div>
-                </div>
-                <x-progress-bar :value="$cabinet->progress" id="cabinet-{{ $cabinet->id }}" />
+            <div class="flex shrink-0 flex-wrap items-center gap-2">
+                @if ($siblings['count'] > 1)
+                    <nav aria-label="ตู้อื่นในโครงการ" class="flex items-center gap-1.5">
+                        @if ($siblings['prev'])
+                            <a href="{{ route('cabinets.show', $siblings['prev']) }}" class="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50" title="{{ $siblings['prev']->mo_no }}" aria-label="ตู้ก่อนหน้า: {{ $siblings['prev']->mo_no }}">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 18l-6-6 6-6"/></svg>
+                            </a>
+                        @endif
+                        <span class="text-sm tabular-nums text-slate-500">ตู้ {{ $siblings['at'] }} / {{ $siblings['count'] }}</span>
+                        @if ($siblings['next'])
+                            <a href="{{ route('cabinets.show', $siblings['next']) }}" class="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50" title="{{ $siblings['next']->mo_no }}" aria-label="ตู้ถัดไป: {{ $siblings['next']->mo_no }}">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 18l6-6-6-6"/></svg>
+                            </a>
+                        @endif
+                    </nav>
+                @endif
+                @editplan
+                <a href="{{ route('cabinets.edit', $cabinet) }}" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">แก้ไขตู้</a>
+                <form method="POST" action="{{ route('cabinets.destroy', $cabinet) }}" onsubmit="return confirm('ยืนยันการลบตู้ {{ $cabinet->mo_no }} นี้? Task/Sub Task/Checklist ทั้งหมดของตู้นี้จะย้ายไปถังขยะ (Admin/PM กู้คืนได้)')">
+                    @csrf @method('DELETE')
+                    <button class="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100">ลบ</button>
+                </form>
+                @endeditplan
             </div>
+        </div>
 
-            @if ($cabinet->description)
-                <div class="mt-4 pt-4 border-t border-slate-100 text-sm space-y-1">
-                    <p class="text-slate-600">{{ $cabinet->description }}</p>
-                </div>
-            @endif
-        </x-card>
-
-        <div class="flex gap-1 border-b border-slate-200">
+        <div class="flex gap-1 overflow-x-auto border-b border-slate-200">
             <button type="button" @click="tab = 'tasks'"
                     :class="tab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Tasks</button>
+                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">งาน ({{ $allSubtasks->count() }})</button>
             @if ($canFiles)
             <button type="button" @click="tab = 'attachments'"
                     :class="tab === 'attachments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">ไฟล์ ({{ $cabinetFolder ? $files->count($cabinet->project, $cabinetFolder, auth()->user()) : 0 }})</button>
+                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">ไฟล์ ({{ $cabinetFolder ? $files->count($cabinet->project, $cabinetFolder, auth()->user()) : 0 }})</button>
             @endif
             @if ($canComments)
             <button type="button" @click="tab = 'comment'"
                     :class="tab === 'comment' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Comment</button>
+                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">Comment</button>
             <button type="button" @click="tab = 'activity'"
                     :class="tab === 'activity' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Activity Log</button>
+                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">Activity Log</button>
             @endif
         </div>
 
@@ -102,9 +94,8 @@
         </div>
 
         <div x-show="tab === 'activity'" x-cloak>
-            <x-activity-tree :url="route('cabinets.activity-tree', $cabinet)" :export-url="auth()->user()->allows('page.export') ? route('cabinets.activity-export', $cabinet) : null" subtitle="ประวัติการเปลี่ยนแปลงทั้งหมดของตู้นี้ จัดกลุ่มตามงาน เรียงล่าสุดก่อน" />
+            <x-activity-tree :url="route('cabinets.activity-tree', $cabinet)" :export-url="auth()->user()->allows('page.export') ? route('cabinets.activity-export', $cabinet) : null" subtitle="ประวัติการเปลี่ยนแปลงทั้งหมดของตู้นี้ จัดกลุ่มตาม Task/Sub Task เรียงล่าสุดก่อน" />
         </div>
-
         @endif
 
         @if ($canFiles)
@@ -114,93 +105,143 @@
         </div>
         @endif
 
-        <div x-show="tab === 'tasks'" class="space-y-4">
-            @foreach ($cabinet->tasks as $task)
-                <x-card class="!p-0">
-                    <details open class="group">
-                        <summary class="list-none cursor-pointer px-5 py-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                            <div class="flex flex-wrap items-center gap-3 min-w-0">
-                                <svg class="w-4 h-4 text-slate-400 shrink-0 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-                                <h3 class="font-semibold text-slate-900">{{ $task->name }}</h3>
+        <div x-show="tab === 'tasks'" class="flex flex-wrap items-start gap-5">
+
+            {{-- ===== cabinet facts ===== --}}
+            <aside aria-label="ข้อมูลตู้" class="w-full space-y-4 lg:w-72 lg:shrink-0">
+                <div class="rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div class="space-y-2 border-b border-slate-100 p-4">
+                        <div class="flex items-baseline justify-between text-xs text-slate-500">
+                            <span>ความคืบหน้าตู้</span>
+                            <span>Checklist <span id="checklist-count-cabinet-{{ $cabinet->id }}">{{ $cabinet->checklist_counts['completed'] }}/{{ $cabinet->checklist_counts['total'] }}</span></span>
+                        </div>
+                        <div class="text-3xl font-bold leading-none text-ae-navy" id="progress-value-cabinet-{{ $cabinet->id }}">{{ $cabinet->progress }}%</div>
+                        <x-progress-bar :value="$cabinet->progress" id="cabinet-{{ $cabinet->id }}" />
+                    </div>
+                    <dl class="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-2 gap-y-1.5 border-b border-slate-100 p-4 text-sm">
+                        <dt class="text-slate-500">กำหนดเสร็จ</dt><dd class="font-semibold text-slate-800">{{ optional($cabinet->due_date)->thaiDate() ?? '-' }}</dd>
+                        <dt class="text-slate-500">คาดว่าจะเสร็จ</dt>
+                        <dd class="font-semibold {{ $expectedLate ? 'text-red-700' : 'text-slate-800' }}">{{ optional($cabinet->expected_completion_date)->thaiDate() ?? '-' }}@if ($expectedLate) (+{{ $cabinet->due_date->diffInDays($cabinet->expected_completion_date) }} วัน)@endif</dd>
+                        <dt class="text-slate-500">วันเริ่ม</dt><dd class="text-slate-800">{{ optional($cabinet->start_date)->thaiDate() ?? '-' }}</dd>
+                        <dt class="text-slate-500">วันทำงาน</dt><dd class="text-slate-800">{{ $cabinet->total_working_days !== null ? $cabinet->total_working_days.' วัน (ไม่รวมเสาร์-อาทิตย์)' : '-' }}</dd>
+                    </dl>
+                    <dl class="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-2 gap-y-1.5 p-4 text-sm">
+                        <dt class="text-slate-500">ประเภทตู้</dt><dd class="font-semibold text-slate-800">{{ $cabinet->cabinet_type ?? '-' }}</dd>
+                        <dt class="text-slate-500">ขนาดตู้</dt><dd class="text-slate-800">{{ $cabinet->size ?? '-' }}</dd>
+                        <dt class="text-slate-500">จำนวน</dt><dd class="text-slate-800">{{ $cabinet->quantity }}</dd>
+                        @if ($cabinet->description)
+                            <dt class="text-slate-500">รายละเอียด</dt><dd class="text-slate-700">{{ $cabinet->description }}</dd>
+                        @endif
+                    </dl>
+                </div>
+                <a href="{{ route('projects.show', [$cabinet->project, 'tab' => 'cabinets']) }}" class="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300">
+                    <div class="text-xs text-slate-500">โครงการ {{ $cabinet->project->project_no }}</div>
+                    <div class="font-bold text-ae-navy">{{ $cabinet->project->project_name }}</div>
+                    <div class="mt-0.5 text-sm text-slate-600">{{ $cabinet->project->customer_name }}@if ($cabinet->project->due_date) · ส่งมอบ {{ $cabinet->project->due_date->thaiDate() }}@endif</div>
+                    <div class="mt-1.5 text-sm font-semibold text-[#0F4C81]">กลับไปหน้าโครงการ</div>
+                </a>
+            </aside>
+
+            {{-- ===== the work list ===== --}}
+            <div class="min-w-0 flex-1 basis-[32rem] space-y-4">
+                <section aria-label="สรุปการจ่ายงาน" class="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                    <span>ยังไม่จ่าย <strong class="{{ ($byState['UNASSIGNED'] ?? 0) ? 'text-amber-700' : 'text-slate-800' }}">{{ $byState['UNASSIGNED'] ?? 0 }}</strong></span>
+                    <span>รอรับงาน <strong class="text-slate-800">{{ $byState['ASSIGNED'] ?? 0 }}</strong></span>
+                    <span>รับแล้ว / กำลังทำ <strong class="text-slate-800">{{ ($byState['ACCEPTED'] ?? 0) + ($byState['IN_PROGRESS'] ?? 0) }}</strong></span>
+                    <span>เสร็จ <strong class="text-slate-800">{{ $byState['COMPLETED'] ?? 0 }}</strong></span>
+                    @if ($allSubtasks->filter($late)->count())
+                        <span>เลยกำหนด <strong class="text-amber-700">{{ $allSubtasks->filter($late)->count() }}</strong></span>
+                    @endif
+                </section>
+
+                <section aria-label="งานของตู้" class="pmo-work-table rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div class="pmo-work-grid pmo-work-head rounded-t-xl border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-500">
+                        <span class="a-name">งาน</span>
+                        <span class="a-dept">แผนก / ขั้นการจ่ายงาน</span>
+                        <span class="a-due">กำหนด</span>
+                        <span class="a-pct">ความคืบหน้า</span>
+                        <span class="a-act"></span>
+                    </div>
+
+                    @foreach ($cabinet->tasks as $ti => $task)
+                        {{-- the task: a group header with its own dates and progress --}}
+                        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-slate-100 bg-white px-4 pb-2 pt-3">
+                            <div class="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                                <h3 class="text-sm font-bold text-ae-navy">{{ $taskLabel($task, $ti) }}</h3>
                                 <x-status-badge :status="$task->status" id="task-{{ $task->id }}" />
-                                @if ($task->start_date)
-                                    <span class="text-xs text-slate-400 whitespace-nowrap">เริ่ม {{ $task->start_date->thaiDate() }}</span>
-                                @endif
+                                @if ($task->start_date)<span class="whitespace-nowrap text-xs text-slate-400">เริ่ม {{ $task->start_date->thaiDate() }}</span>@endif
                                 @if ($task->due_date)
-                                    <span class="text-xs text-slate-400 whitespace-nowrap">จบ {{ $task->due_date->thaiDate() }}</span>
+                                    <span class="whitespace-nowrap text-xs text-slate-400">จบ {{ $task->due_date->thaiDate() }}</span>
                                     @if ($task->status !== \App\Models\CabinetTask::STATUS_COMPLETED)
-                                        <span class="text-xs font-medium px-1.5 py-0.5 rounded whitespace-nowrap {{ $task->days_remaining < 0 ? 'bg-red-100 text-red-700' : ($task->days_remaining <= 3 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500') }}">
+                                        <span class="whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium {{ $task->days_remaining < 0 ? 'bg-red-100 text-red-700' : ($task->days_remaining <= 3 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500') }}">
                                             {{ $task->days_remaining >= 0 ? 'เหลือ '.$task->days_remaining.' วัน' : 'เลยกำหนด '.abs($task->days_remaining).' วัน' }}
                                         </span>
                                     @endif
                                 @endif
                                 @editplan
-                                <button type="button" x-data @click.stop.prevent="$dispatch('open-modal', 'edit-task-{{ $task->id }}')" class="text-xs font-medium text-blue-600 hover:underline shrink-0">Edit</button>
+                                <button type="button" x-data @click="$dispatch('open-modal', 'edit-task-{{ $task->id }}')" class="shrink-0 text-xs font-medium text-[#0F4C81] hover:underline">แก้ไข</button>
                                 @endeditplan
                             </div>
-                            <div class="w-full sm:w-52 sm:shrink-0">
-                                <div class="flex items-center justify-end gap-2 mb-1">
-                                    <span class="text-sm font-bold text-slate-800" id="progress-value-task-{{ $task->id }}">{{ $task->progress }}%</span>
-                                    <span class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
-                                        <span id="checklist-count-task-{{ $task->id }}">{{ $task->checklist_counts['completed'] }}/{{ $task->checklist_counts['total'] }}</span> Checklists
-                                    </span>
-                                </div>
-                                <x-progress-bar :value="$task->progress" size="sm" id="task-{{ $task->id }}" />
+                            <div class="flex w-full items-center gap-2 sm:w-56">
+                                <x-progress-bar :value="$task->progress" size="sm" id="task-{{ $task->id }}" class="flex-1" />
+                                <span class="w-10 text-right text-sm font-bold tabular-nums text-slate-800" id="progress-value-task-{{ $task->id }}">{{ $task->progress }}%</span>
+                                <span class="whitespace-nowrap text-xs text-slate-500"><span id="checklist-count-task-{{ $task->id }}">{{ $task->checklist_counts['completed'] }}/{{ $task->checklist_counts['total'] }}</span></span>
                             </div>
-                        </summary>
+                        </div>
 
-                        <div class="border-t border-slate-100 divide-y divide-slate-100">
-                            @forelse ($task->subtasks as $subtask)
-                                <details class="pl-12 pr-5 py-3 border-l-2 border-slate-100 ml-5" id="subtask-{{ $subtask->id }}">
-                                    <summary class="list-none cursor-pointer flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 sm:min-w-[22rem] flex-1">
-                                            <span class="text-sm font-medium text-slate-800 min-w-[10rem] max-w-xs">{{ $subtask->name }}</span>
+                        @forelse ($task->subtasks as $subtask)
+                            <div x-data="{ open: location.hash === '#subtask-{{ $subtask->id }}' }" id="subtask-{{ $subtask->id }}" class="scroll-mt-20 border-b border-slate-100">
+                                <div class="pmo-work-grid px-4 py-2.5 hover:bg-slate-50/70">
+                                    <div class="a-name min-w-0">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span class="text-sm font-semibold text-slate-800">{{ $subtask->name }}</span>
                                             <x-status-badge :status="$subtask->status" id="subtask-{{ $subtask->id }}" />
-                                            <div class="flex flex-wrap items-center gap-2" data-assignment="{{ $subtask->id }}" @click.stop>
-                                                @include('cabinets.partials._assignment', ['subtask' => $subtask, 'departments' => $departments])
-                                            </div>
-                                            @if ($subtask->start_date)
-                                                <span class="text-xs text-slate-400 whitespace-nowrap">เริ่ม {{ $subtask->start_date->thaiDate() }}</span>
-                                            @endif
-                                            @if ($subtask->due_date)
-                                                <span class="text-xs text-slate-400 whitespace-nowrap">จบ {{ $subtask->due_date->thaiDate() }}</span>
-                                                @if ($subtask->status !== \App\Models\CabinetSubtask::STATUS_COMPLETED)
-                                                    <span class="text-xs font-medium px-1.5 py-0.5 rounded whitespace-nowrap {{ $subtask->days_remaining < 0 ? 'bg-red-100 text-red-700' : ($subtask->days_remaining <= 3 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500') }}">
-                                                        {{ $subtask->days_remaining >= 0 ? 'เหลือ '.$subtask->days_remaining.' วัน' : 'เลยกำหนด '.abs($subtask->days_remaining).' วัน' }}
-                                                    </span>
-                                                @endif
-                                            @endif
                                         </div>
-                                        <div class="flex flex-wrap items-center gap-3">
-                                            <div class="w-full sm:w-44">
-                                                <div class="flex items-center justify-end gap-2 mb-1">
-                                                    <span class="text-sm font-bold text-slate-800" id="progress-value-subtask-{{ $subtask->id }}">{{ $subtask->progress }}%</span>
-                                                    <span class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
-                                                        <span id="checklist-count-subtask-{{ $subtask->id }}">{{ $subtask->checklists->where('is_completed', true)->count() }}/{{ $subtask->checklists->count() }}</span> Checklists
-                                                    </span>
+                                        <div class="text-xs text-slate-500">Checklist <span id="checklist-count-subtask-{{ $subtask->id }}">{{ $subtask->checklists->where('is_completed', true)->count() }}/{{ $subtask->checklists->count() }}</span></div>
+                                    </div>
+                                    <div class="a-dept flex flex-wrap items-center gap-2" data-assignment="{{ $subtask->id }}">
+                                        @include('cabinets.partials._assignment', ['subtask' => $subtask, 'departments' => $departments])
+                                    </div>
+                                    <div class="a-due text-xs">
+                                        @if ($subtask->due_date)
+                                            <div class="tabular-nums text-slate-600">{{ $subtask->due_date->thaiDate() }}</div>
+                                            @if ($subtask->status !== \App\Models\CabinetSubtask::STATUS_COMPLETED)
+                                                <div class="font-semibold {{ $subtask->days_remaining < 0 ? 'text-amber-700' : ($subtask->days_remaining <= 3 ? 'text-amber-700' : 'text-slate-500') }}">
+                                                    {{ $subtask->days_remaining >= 0 ? 'เหลือ '.$subtask->days_remaining.' วัน' : 'ช้า '.abs($subtask->days_remaining).' วัน' }}
                                                 </div>
-                                                <x-progress-bar :value="$subtask->progress" size="sm" id="subtask-{{ $subtask->id }}" />
-                                            </div>
-                                            @editplan
-                                            <button type="button" x-data @click.stop.prevent="$dispatch('open-modal', 'edit-subtask-{{ $subtask->id }}')" class="text-xs font-medium text-blue-600 hover:underline">Edit</button>
-                                            @endeditplan
-                                        </div>
-                                    </summary>
-
+                                            @endif
+                                        @else
+                                            <span class="text-slate-400">-</span>
+                                        @endif
+                                    </div>
+                                    <div class="a-pct flex items-center gap-2">
+                                        <x-progress-bar :value="$subtask->progress" size="sm" id="subtask-{{ $subtask->id }}" class="flex-1" />
+                                        <span class="w-10 text-right text-sm font-bold tabular-nums text-slate-800" id="progress-value-subtask-{{ $subtask->id }}">{{ $subtask->progress }}%</span>
+                                    </div>
+                                    <div class="a-act flex items-center justify-end gap-0.5">
+                                        @editplan
+                                        <button type="button" x-data @click="$dispatch('open-modal', 'edit-subtask-{{ $subtask->id }}')" class="rounded-lg px-2 py-1 text-xs font-medium text-[#0F4C81] hover:bg-slate-100">แก้ไข</button>
+                                        @endeditplan
+                                        <button type="button" @click="open = ! open" :aria-expanded="open" class="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="แสดง Checklist ของ {{ $subtask->name }}">
+                                            <svg class="h-4 w-4 transition-transform" :class="open && 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div x-show="open" x-cloak class="bg-slate-50/60 px-4 pb-3 pt-1">
                                     {{-- the one checklist editor: tick, edit in place, add many / paste from Excel, select to move / copy / delete, undo --}}
-                                    <x-checklist-editor kind="subtask" :owner="$subtask" class="mt-3 ml-7"
+                                    <x-checklist-editor kind="subtask" :owner="$subtask" class="rounded-lg border border-slate-100 bg-white p-3"
                                                         :items="$checklistEditor->items('subtask', $subtask)"
                                                         :editable="$subtask->isChecklistEditableBy(auth()->user())"
                                                         :date-label="$handoff->dateLabel($subtask->department_id)"
                                                         :linked="$linkedByDept[$subtask->department_id] ??= $handoff->linkedForDepartment($subtask->department_id, collect([$cabinet->id]))->get($cabinet->id, [])" />
-                                </details>
-                            @empty
-                                <p class="px-5 py-4 text-sm text-slate-400">ยังไม่มี Sub Task</p>
-                            @endforelse
-                        </div>
-                    </details>
-                </x-card>
-            @endforeach
+                                </div>
+                            </div>
+                        @empty
+                            <p class="border-b border-slate-100 px-4 py-3 text-sm text-slate-400">ยังไม่มี Sub Task</p>
+                        @endforelse
+                    @endforeach
+                </section>
+            </div>
         </div>
     </div>
 
