@@ -23,9 +23,9 @@
     <aside aria-label="ข้อมูลโครงการ" class="w-full rounded-xl border border-slate-200 bg-white shadow-sm lg:w-80 lg:shrink-0">
         <div class="space-y-3 border-b border-slate-100 p-4">
             <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-center gap-1.5">
-                    <x-status-badge :status="$project->status" />
-                    <span class="text-xs font-medium text-slate-500">· {{ \App\Models\Project::$priorities[$project->priority] ?? $project->priority }}</span>
+                <div class="flex items-center gap-2">
+                    <x-project-status :status="$project->status" />
+                    <x-priority-flag :priority="$project->priority" :always="true" />
                 </div>
                 @if ($healthShort)
                     <span class="inline-flex items-center gap-1.5 text-xs font-semibold {{ $tone[$health['tone']]['text'] }}">
@@ -163,7 +163,7 @@
             @if ($health['items'])
                 <div class="mt-2 grid gap-x-5 gap-y-2 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-3">
                     @foreach ($health['items'] as $item)
-                        <div><div class="font-semibold text-slate-800">{{ $item['label'] }}</div>{{ $item['detail'] }}</div>
+                        <div class="border-l-[3px] pl-2.5" style="border-color: {{ $item['color'] ?? '#e2e8f0' }}"><div class="font-semibold text-slate-800">{{ $item['label'] }}</div>{{ $item['detail'] }}</div>
                     @endforeach
                 </div>
                 @if (($health['more'] ?? 0) > 0)
@@ -184,8 +184,8 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
                     @foreach ($overview['departments'] as $d)
-                        <div class="rounded-lg border border-slate-100 px-3 py-2">
-                            <div class="text-sm font-semibold leading-snug text-ae-navy">{{ $d['name'] }}</div>
+                        <div class="rounded-lg border border-slate-100 border-l-[3px] px-3 py-2" style="border-left-color: {{ $d['color'] }}">
+                            <div class="flex items-start gap-1.5 text-sm font-semibold leading-snug text-ae-navy"><span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" style="background: {{ $d['color'] }}"></span>{{ $d['name'] }}</div>
                             <div class="mt-1 flex gap-3 text-xs text-slate-600">
                                 <span>ค้าง <strong class="text-sm text-slate-800">{{ $d['open'] }}</strong></span>
                                 <span>เลยกำหนด <strong class="text-sm {{ $d['late'] ? 'text-amber-700' : 'text-slate-800' }}">{{ $d['late'] }}</strong></span>
@@ -282,7 +282,7 @@
                                                 </div>
                                             </div>
                                             <div role="cell" class="a-now min-w-0" title="{{ $r['currentMeta'] }}">
-                                                <div class="truncate text-sm font-semibold text-ae-navy">{{ $r['current'] }}</div>
+                                                <div class="flex items-center gap-1.5 text-sm font-semibold text-ae-navy"><span class="h-2 w-2 shrink-0 rounded-full" style="background: {{ $r['currentColor'] }}"></span><span class="truncate">{{ $r['current'] }}</span></div>
                                                 <div class="flex items-center gap-1.5 text-xs font-semibold {{ $tone[$r['tone']]['text'] }}">
                                                     <span class="h-1.5 w-1.5 shrink-0 rounded-full {{ $tone[$r['tone']]['dot'] }}"></span><span class="truncate">{{ $r['status'] }}</span>
                                                 </div>
@@ -304,7 +304,7 @@
                                             <div class="grid overflow-hidden rounded-lg border border-slate-100 bg-white sm:grid-cols-2 xl:grid-cols-3">
                                                 @foreach ($r['steps'] as $s)
                                                     <div class="grid grid-cols-[minmax(0,1fr)_2.75rem_4.5rem] items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-xs">
-                                                        <span class="truncate {{ $s['pct'] >= 100 ? 'text-slate-500' : 'text-ae-navy' }}" title="{{ $s['label'] }} · {{ $s['department'] }}">{{ $s['label'] }} <span class="text-slate-500">· {{ $s['department'] }}</span></span>
+                                                        <span class="flex min-w-0 items-center gap-1.5 {{ $s['pct'] >= 100 ? 'text-slate-500' : 'text-ae-navy' }}" title="{{ $s['label'] }} · {{ $s['department'] }}"><span class="h-2 w-2 shrink-0 rounded-full" style="background: {{ $s['color'] }}"></span><span class="truncate">{{ $s['label'] }} <span class="text-slate-500">· {{ $s['department'] }}</span></span></span>
                                                         <span class="font-semibold tabular-nums">{{ $s['pct'] }}%</span>
                                                         <span class="font-semibold {{ $s['lateDays'] !== null ? 'text-amber-700' : 'text-slate-500' }}">{{ $s['lateDays'] !== null ? 'ช้า '.$s['lateDays'].' วัน' : ($s['pct'] >= 100 ? 'เสร็จ' : '') }}</span>
                                                     </div>

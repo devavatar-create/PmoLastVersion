@@ -27,10 +27,24 @@ class ProjectController extends Controller
             ->paginate(15)
             ->withQueryString();
 
+        // which departments have dispatched work in each listed project (the coloured dots, as on Planning)
+        $deptIds = \App\Models\CabinetSubtask::query()
+            ->join('cabinet_tasks', 'cabinet_tasks.id', '=', 'cabinet_subtasks.cabinet_task_id')
+            ->join('cabinets', 'cabinets.id', '=', 'cabinet_tasks.cabinet_id')
+            ->whereIn('cabinets.project_id', $projects->pluck('id'))
+            ->whereNull('cabinet_tasks.deleted_at')->whereNull('cabinets.deleted_at')
+            ->whereNotNull('cabinet_subtasks.department_id')
+            ->whereIn('cabinet_subtasks.assignment_status', \App\Services\WorkScope::ACTIVE_STATUSES)
+            ->distinct()->get(['cabinets.project_id', 'cabinet_subtasks.department_id'])
+            ->groupBy('project_id')->map(fn ($rows) => $rows->pluck('department_id')->all());
+
         return view('projects.index', [
             'projects' => $projects,
+            'projectDepartments' => $deptIds,
+            'departmentColors' => \App\Services\PlanningBoard::departmentColors(),
+            'departmentNames' => \App\Models\Department::pluck('name', 'id'),
             'statuses' => Project::$statuses,
-            'filters' => $request->only(['q', 'status']),
+            'filters' => $request->only(['q', 'status', 'priority']),
         ]);
     }
 
@@ -81,6 +95,10 @@ class ProjectController extends Controller
 
         if ($status = $request->get('status')) {
             $query->where('status', $status);
+        }
+
+        if (in_array($priority = $request->get('priority'), [Project::PRIORITY_URGENT, Project::PRIORITY_HIGH], true)) {   // the ⚑ ด่วน / ⚑ สูง buttons
+            $query->where('priority', $priority);
         }
 
         return $query;

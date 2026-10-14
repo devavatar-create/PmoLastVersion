@@ -37,6 +37,6 @@ class ProjectIndexOrderTest extends TestCase
         $response->assertSee('เหลือ 3 วัน');
         $response->assertSee('เหลือ 68 วัน');
         // Finished projects get no countdown: only the 4 dated, active ones do.
-        $this->assertSame(4, substr_count($response->getContent(), 'inline-block text-xs font-medium px-1.5'));
+        $this->assertSame(4, substr_count($response->getContent(), 'data-countdown'));
     }
 }

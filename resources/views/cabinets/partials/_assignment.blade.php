@@ -25,17 +25,22 @@
 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap {{ $badge }}" data-assignment-status
       @if ($trail) title="{{ $trail }}" @endif>{{ $subtask->assignment_status_label }}</span>
 
+@php
+    // the department's colour, as on Planning
+    $dot = $subtask->department_id ? '<span class="h-2 w-2 shrink-0 rounded-full" style="background: '.e(\App\Services\PlanningBoard::departmentColors()[$subtask->department_id] ?? '#94a3b8').'" aria-hidden="true"></span>' : '';
+@endphp
 @if ($locked)
     <span class="inline-flex items-center gap-1 text-xs font-medium text-slate-600 cursor-not-allowed"
           title="ไม่สามารถเปลี่ยนแผนกได้ เนื่องจากแผนกรับงานแล้ว">
-        {{ $subtask->department?->name ?? '-' }} <span aria-hidden="true">🔒</span>
+        {!! $dot !!}{{ $subtask->department?->name ?? '-' }} <span aria-hidden="true">🔒</span>
     </span>
 @elseif (! $canEditDepartment)
     <span class="inline-flex items-center gap-1 text-xs font-medium text-slate-500"
           title="เฉพาะผู้ดูแลระบบ (Admin) หรือ Project Manager เท่านั้นที่มีสิทธิ์เปลี่ยนแผนก">
-        {{ $subtask->department?->name ?? '- ยังไม่จ่ายงาน -' }}
+        {!! $dot !!}{{ $subtask->department?->name ?? '- ยังไม่จ่ายงาน -' }}
     </span>
 @else
+    <span class="inline-flex items-center gap-1.5">{!! $dot !!}
     <select class="assignment-department-select rounded-lg border-slate-300 text-xs py-1 pl-2 pr-7"
             data-url="{{ route('cabinet-subtasks.department', $subtask) }}"
             data-previous="{{ $subtask->department_id }}"
@@ -45,6 +50,7 @@
             <option value="{{ $department->id }}" @selected($subtask->department_id === $department->id)>{{ $department->name }}</option>
         @endforeach
     </select>
+    </span>
 @endif
 
 @if ($actions['can_accept'])

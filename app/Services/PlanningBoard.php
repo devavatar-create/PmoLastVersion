@@ -43,6 +43,24 @@ class PlanningBoard
 
     private const PALETTE = ['#a855f7', '#3b82f6', '#f59e0b', '#10b981', '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16', '#6366f1'];
 
+    /**
+     * Each active department's colour as Planning shows it (Settings > แผนก, else a stable palette colour by position),
+     * so other pages can use the same dots.
+     *
+     * @return array<int, string> department id => #hex
+     */
+    public static function departmentColors(): array
+    {
+        return once(fn () => Department::where('is_active', true)->orderBy('id')->get(['id', 'color'])->values()   // once per request: rows render it many times
+            ->mapWithKeys(fn (Department $d, int $i) => [$d->id => $d->color ?: self::PALETTE[$i % count(self::PALETTE)]])->all());
+    }
+
+    /** PMO project status => colour, the same set Planning shows for a project with no status picked by hand. */
+    public static function statusColor(?string $status): string
+    {
+        return collect(self::pmoStatuses())->firstWhere('id', 'pmo_'.$status)['color'] ?? '#94a3b8';
+    }
+
     /** The profile the page runs as: read-only, and "no department" (= sees every department) for PMO roles. */
     public function profile(User $user): array
     {
@@ -66,13 +84,14 @@ class PlanningBoard
 
         $handoff = app(HandoffService::class);
         $fieldsByDept = DepartmentField::with('options')->orderBy('sort')->orderBy('id')->get()->groupBy('department_id');
+        $colors = self::departmentColors();
         $departments = Department::where('is_active', true)->orderBy('id')->get(['id', 'name', 'code', 'color', 'icon', 'sees_all'])
             ->values()
-            ->map(fn (Department $d, int $i) => [
+            ->map(fn (Department $d) => [
                 'id' => self::deptKey($d->id),
                 'name' => $d->name,
                 'code' => (string) $d->code,
-                'color' => $d->color ?: self::PALETTE[$i % count(self::PALETTE)],   // Settings > แผนก, else a stable palette colour
+                'color' => $colors[$d->id],   // Settings > แผนก, else a stable palette colour
                 'icon' => (string) $d->icon,
                 'checklist' => [],
                 'fields' => ($fieldsByDept->get($d->id) ?? collect())->map(fn (DepartmentField $f) => self::fieldShape($f))->values()->all(),

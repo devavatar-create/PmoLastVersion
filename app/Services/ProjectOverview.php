@@ -20,6 +20,9 @@ class ProjectOverview
     /** Activity rows worth showing on the overview (no field-by-field edits, no checklist ticks). */
     private const FEED_ACTIONS = ['assigned', 'accepted', 'started', 'completed', 'note', 'files', 'reminded'];
 
+    /** @var array<int, string> department id => colour, for this build */
+    private array $colors = [];
+
     private const OPEN_ASSIGNMENTS = [CabinetSubtask::ASSIGNMENT_ASSIGNED, CabinetSubtask::ASSIGNMENT_ACCEPTED, CabinetSubtask::ASSIGNMENT_IN_PROGRESS];
 
     public function build(Project $project, User $user): array
@@ -29,6 +32,7 @@ class ProjectOverview
         $subtasks = $cabinets->flatMap->tasks->flatMap->subtasks;
         $late = fn (CabinetSubtask $s) => $s->due_date && $s->due_date->lt($today) && $s->status !== CabinetSubtask::STATUS_COMPLETED;
         $short = $this->shortNames($cabinets);
+        $this->colors = PlanningBoard::departmentColors();   // the same department dots as Planning
 
         $rows = $cabinets->map(fn (Cabinet $c) => $this->row($c, $project, $short[$c->id] ?? $c->mo_no, $late, $today));
 
@@ -53,10 +57,12 @@ class ProjectOverview
             $overdue = $task->subtasks->filter($late);
             $days = $overdue->map(fn ($s) => (int) $s->due_date->diffInDays($today))->max();
             $departments = $task->subtasks->map(fn ($s) => $s->department?->name)->filter()->unique()->implode(', ');
+            $firstDept = $task->subtasks->first(fn ($s) => $s->department_id)?->department_id;
             $label = preg_match('/^\d+[.)]\s/u', $task->name) ? $task->name : ($i + 1).'. '.$task->name;   // templates often number their steps already
 
             return [
                 'no' => $i + 1, 'name' => $task->name, 'label' => $label, 'pct' => (int) $task->progress, 'department' => $departments ?: '-',
+                'color' => $firstDept ? ($this->colors[$firstDept] ?? '#94a3b8') : '#cbd5e1',
                 'lateCount' => $overdue->count(), 'lateDays' => $days,
                 'subtasks' => $task->subtasks->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'department' => $s->department?->name, 'locked' => $s->is_department_locked])->all(),
                 'tip' => $label.' · '.(int) $task->progress.'%'.($days !== null ? ' · เลยกำหนด '.$days.' วัน' : ''),
@@ -90,6 +96,7 @@ class ProjectOverview
             'signature' => $steps->pluck('name')->implode("\n"),
             'templateName' => $c->cabinetTemplate?->name,
             'current' => $current ? $current['label'] : 'ครบทุกขั้นตอน',
+            'currentColor' => $current['color'] ?? '#cbd5e1',
             'currentMeta' => $current ? $current['department'].' · '.$current['pct'].'% · ขั้น '.$current['no'].'/'.$steps->count() : 'เสร็จ '.$steps->count().'/'.$steps->count(),
             'stripLabel' => 'เสร็จ '.$steps->where('pct', 100)->count().' จาก '.$steps->count().' ขั้นตอน'.($lateSteps->count() ? ' · เลยกำหนด '.$lateSteps->count().' ขั้น' : ''),
         ];
@@ -120,12 +127,12 @@ class ProjectOverview
             $showDepartments = $user->canSeeAllWork();
             $steps = $rows->flatMap(fn ($r) => collect($r['steps'])->where('lateCount', '>', 0))
                 ->groupBy('label')
-                ->map(fn ($list, $label) => ['label' => 'ขั้น '.$label, 'cabinets' => $list->count(), 'days' => $list->max('lateDays'), 'department' => $list->first()['department']])
+                ->map(fn ($list, $label) => ['label' => 'ขั้น '.$label, 'cabinets' => $list->count(), 'days' => $list->max('lateDays'), 'department' => $list->first()['department'], 'color' => $list->first()['color']])
                 ->sortByDesc(fn ($s) => $s['cabinets'] * $s['days'])->values();   // most cabinet-days lost first
 
             return ['tone' => 'amber', 'title' => 'ทุกตู้ยังทันวันส่ง แต่มีงานย่อยเลยกำหนด '.$lateSubtasks->count().' งาน',
                 'note' => $next ? 'ถ้าไม่เร่ง ตู้ที่ต้องส่งก่อน (กำหนด '.$next['due'].') จะเริ่มเสี่ยง' : null,
-                'items' => $steps->take(3)->map(fn ($s) => ['label' => $s['label'],
+                'items' => $steps->take(3)->map(fn ($s) => ['label' => $s['label'], 'color' => $showDepartments ? $s['color'] : null,
                     'detail' => $s['cabinets'].' ตู้ · ช้าสุด '.$s['days'].' วัน'.($showDepartments ? ' · '.$s['department'] : '')])->all(),
                 'more' => max(0, $steps->count() - 3)];
         }
@@ -202,7 +209,7 @@ class ProjectOverview
             ->map(function ($list, $name) use ($late) {
                 $waiting = $list->where('assignment_status', CabinetSubtask::ASSIGNMENT_ASSIGNED);
 
-                return ['name' => $name, 'open' => $list->count(), 'late' => $list->filter($late)->count(),
+                return ['name' => $name, 'color' => $this->colors[$list->first()->department_id] ?? '#94a3b8', 'open' => $list->count(), 'late' => $list->filter($late)->count(),
                     'waitingIds' => $waiting->pluck('id')->values()->all(),   // for "ทวงถาม"
                     'waitingDays' => (int) $waiting->max(fn ($s) => $s->assigned_at ? (int) $s->assigned_at->diffInDays(now()) : 0)];
             })
