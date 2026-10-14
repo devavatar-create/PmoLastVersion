@@ -8,272 +8,52 @@
     </x-slot>
 
     @php
-        $tabs = array_merge(['project', 'cabinets'], auth()->user()->allows('data.files') ? ['attachments'] : [], auth()->user()->allows('data.comments') ? ['comment', 'activity'] : []);
-        $initialTab = in_array(request('tab'), $tabs) ? request('tab') : 'project';
+        $tabs = array_merge(['overview'], auth()->user()->allows('data.files') ? ['attachments'] : [], auth()->user()->allows('data.comments') ? ['comment', 'activity'] : []);
+        // the old "โปรเจ็ค" and "ใบสั่งผลิต/MO" tabs are one "ภาพรวม" tab now; links that still name them land there
+        $asked = in_array(request('tab'), ['project', 'cabinets'], true) ? 'overview' : request('tab');
+        $initialTab = in_array($asked, $tabs, true) ? $asked : 'overview';
     @endphp
-    <div class="max-w-7xl mx-auto space-y-6" x-data="{ tab: '{{ $initialTab }}' }" x-init="$watch('tab', (t) => keepTabInUrl(t, 'project'))">
+    <div class="max-w-screen-2xl mx-auto space-y-5" x-data="{ tab: '{{ $initialTab }}' }" x-init="$watch('tab', (t) => keepTabInUrl(t, 'overview'))">
 
         <x-closed-project-banner :project="$project" />
 
-        <!-- Project Identity (always visible, not tab-dependent) -->
-        <x-card>
-            <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                <div>
-                    <h1 class="text-xl font-bold text-slate-900">{{ $project->project_name }}</h1>
-                    <p class="text-sm text-slate-500 mt-0.5">{{ $project->customer_name }}</p>
-                    <div class="flex items-center gap-4 mt-2 text-sm text-slate-500">
-                        <span>Due: <span class="font-medium text-slate-700">{{ optional($project->due_date)->thaiDate() ?? '-' }}</span></span>
-                        @if ($project->days_remaining !== null)
-                            <span class="font-medium {{ $project->days_remaining < 0 ? 'text-red-600' : ($project->days_remaining <= 7 ? 'text-orange-500' : 'text-slate-600') }}">
-                                {{ $project->days_remaining >= 0 ? 'เหลือ '.$project->days_remaining.' วัน' : 'เลยกำหนด '.abs($project->days_remaining).' วัน' }}
-                            </span>
-                        @endif
-                        @php $risk = $project->risk_level; @endphp
-                        @if ($risk === 'overdue')
-                            <span class="inline-flex items-center gap-1 text-red-600 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Delayed</span>
-                        @elseif ($risk === 'at_risk')
-                            <span class="inline-flex items-center gap-1 text-orange-500 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span> At Risk</span>
-                        @elseif ($risk === 'on_track')
-                            <span class="inline-flex items-center gap-1 text-emerald-600 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> On Track</span>
-                        @endif
-                    </div>
-                </div>
-                <div class="flex gap-2 shrink-0 lg:order-last">
-                    @editplan
-                    <a href="{{ route('projects.edit', $project) }}" class="px-3 py-2 rounded-lg bg-slate-100 text-sm font-medium text-slate-700 hover:bg-slate-200">Edit</a>
-                    <form method="POST" action="{{ route('projects.destroy', $project) }}" onsubmit="return confirm('ยืนยันการลบโครงการนี้? ตู้และงานทั้งหมดใต้โครงการจะย้ายไปถังขยะ (Admin/PM กู้คืนได้)')">
-                        @csrf @method('DELETE')
-                        <button class="px-3 py-2 rounded-lg bg-red-50 text-sm font-medium text-red-600 hover:bg-red-100">Delete</button>
-                    </form>
-                    @endeditplan
-                </div>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <h1 class="text-xl font-bold text-ae-navy">{{ $project->project_name }}</h1>
+                <p class="mt-0.5 text-sm text-slate-500">{{ $project->customer_name }}</p>
             </div>
+            <div class="flex shrink-0 gap-2">
+                @editplan
+                <a href="{{ route('projects.edit', $project) }}" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">แก้ไขโครงการ</a>
+                <form method="POST" action="{{ route('projects.destroy', $project) }}" onsubmit="return confirm('ยืนยันการลบโครงการนี้? ตู้และงานทั้งหมดใต้โครงการจะย้ายไปถังขยะ (Admin/PM กู้คืนได้)')">
+                    @csrf @method('DELETE')
+                    <button class="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100">ลบ</button>
+                </form>
+                @endeditplan
+            </div>
+        </div>
 
-            {{-- มูลค่างาน (before VAT) · VAT 7% · รวม VAT · Margin - always in view, whatever the tab --}}
-            @if (auth()->user()->allows('data.finance') && ($project->contract_value !== null || $project->margin !== null))   {{-- Settings > สิทธิ์การใช้งาน --}}
-                @php $baht = fn ($v) => $v !== null ? number_format((float) $v, 2) : '-'; @endphp
-                <dl class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-4">
-                    <div><dt class="text-xs text-slate-500">มูลค่างาน (ก่อน VAT)</dt><dd class="font-semibold tabular-nums text-slate-900">{{ $baht($project->contract_value) }} <span class="text-xs font-normal text-slate-400">บาท</span></dd></div>
-                    <div><dt class="text-xs text-slate-500">VAT 7%</dt><dd class="font-semibold tabular-nums text-slate-900">{{ $baht($project->vatAmount()) }} <span class="text-xs font-normal text-slate-400">บาท</span></dd></div>
-                    <div><dt class="text-xs text-slate-500">มูลค่างานรวม VAT 7%</dt><dd class="font-bold tabular-nums text-ae-navy">{{ $baht($project->contractValueWithVat()) }} <span class="text-xs font-normal text-slate-400">บาท</span></dd></div>
-                    <div><dt class="text-xs text-slate-500">Margin</dt><dd class="font-semibold tabular-nums text-slate-900">{{ $baht($project->margin) }} <span class="text-xs font-normal text-slate-400">บาท</span>
-                        @if ($project->marginPercent() !== null)<span class="ml-1 rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-semibold text-emerald-700">{{ $project->marginPercent() }} %</span>@endif</dd></div>
-                </dl>
-            @endif
-        </x-card>
-
-        <div class="flex gap-1 border-b border-slate-200">
-            <button type="button" @click="tab = 'project'"
-                    :class="tab === 'project' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">โปรเจ็ค</button>
-            <button type="button" @click="tab = 'cabinets'"
-                    :class="tab === 'cabinets' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">ใบสั่งผลิต/MO</button>
+        <div class="flex gap-1 overflow-x-auto border-b border-slate-200">
+            <button type="button" @click="tab = 'overview'"
+                    :class="tab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
+                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">ภาพรวม</button>
             @if (auth()->user()->allows('data.files'))
             <button type="button" @click="tab = 'attachments'"
                     :class="tab === 'attachments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">ไฟล์ ({{ app(\App\Services\ProjectFiles::class)->count($project, null, auth()->user()) }})</button>
+                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">ไฟล์ ({{ app(\App\Services\ProjectFiles::class)->count($project, null, auth()->user()) }})</button>
             @endif
             @if (auth()->user()->allows('data.comments'))
             <button type="button" @click="tab = 'comment'"
                     :class="tab === 'comment' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Comment</button>
+                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">Comment</button>
             <button type="button" @click="tab = 'activity'"
                     :class="tab === 'activity' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Activity Log</button>
+                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">Activity Log</button>
             @endif
         </div>
 
-        <div x-show="tab === 'project'" class="space-y-6">
-
-        <x-card class="cursor-pointer hover:border-blue-300 hover:shadow-sm transition"
-                @click="tab = 'cabinets'; $nextTick(() => document.getElementById('cabinets-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))">
-            <x-progress-bar :value="$project->production_progress" label="Production Progress" />
-            <div class="flex items-center justify-end gap-1 mt-3 text-xs font-medium text-blue-600">
-                <span>ดูตู้ไฟฟ้าทั้งหมด</span>
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-            </div>
-        </x-card>
-
-        <!-- Project Info -->
-        <x-card title="ข้อมูลโครงการ">
-            <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                @if (auth()->user()->allows('data.contact'))
-                <div><dt class="text-slate-500">เบอร์ติดต่อลูกค้า</dt><dd class="font-medium text-slate-800">
-                    @if ($project->customer_phone)<a href="tel:{{ preg_replace('/[^0-9+]/', '', $project->customer_phone) }}" class="text-blue-600 hover:underline">{{ $project->customer_phone }}</a>@else - @endif</dd></div>
-                @endif
-                <div><dt class="text-slate-500">เลขที่ใบสั่งซื้อ (PO)</dt><dd class="font-medium text-slate-800">{{ $project->po_no ?? '-' }}</dd></div>
-                <div><dt class="text-slate-500">ความสำคัญ</dt><dd class="font-medium text-slate-800">{{ \App\Models\Project::$priorities[$project->priority] ?? $project->priority }}</dd></div>
-                <div><dt class="text-slate-500">พนักงานขาย</dt><dd class="font-medium text-slate-800">{{ $project->sales_person ?? '-' }}</dd></div>
-                <div><dt class="text-slate-500">ผู้จัดการโครงการ (PM)</dt><dd class="font-medium text-slate-800">{{ $project->projectManager?->name ?? '-' }}</dd></div>
-                <div><dt class="text-slate-500">ประเภทงาน</dt><dd class="font-medium text-slate-800">{{ $project->jobType?->name ?? '-' }}</dd></div>
-                <div><dt class="text-slate-500">เงื่อนไขการชำระ</dt><dd class="font-medium text-slate-800">{{ $project->payment_terms ?? '-' }}</dd></div>
-                <div><dt class="text-slate-500">วันเริ่ม</dt><dd class="font-medium text-slate-800">{{ optional($project->start_date)->thaiDate() ?? '-' }}</dd></div>
-                <div><dt class="text-slate-500">วันครบกำหนด</dt><dd class="font-medium text-slate-800">{{ optional($project->due_date)->thaiDate() ?? '-' }}</dd></div>
-                {{-- no longer asked for on the form: shown only for an older project that still has a value --}}
-                @if ($project->sales_order_no)
-                    <div><dt class="text-slate-500">ใบสั่งขาย / อ้างอิง</dt><dd class="font-medium text-slate-800">{{ $project->sales_order_no }}</dd></div>
-                @endif
-                @if ($project->project_owner)
-                    <div><dt class="text-slate-500">เจ้าของโครงการ</dt><dd class="font-medium text-slate-800">{{ $project->project_owner }}</dd></div>
-                @endif
-                @if ($project->description)
-                    <div class="sm:col-span-2 lg:col-span-3"><dt class="text-slate-500">คำอธิบาย</dt><dd class="text-slate-700 mt-0.5">{{ $project->description }}</dd></div>
-                @endif
-            </dl>
-        </x-card>
-
-        <!-- Project Tasks -->
-        <x-card title="Project Tasks" subtitle="งานบริหารโครงการ (แยกจากงานผลิตตู้)">
-            <x-slot name="actions">
-                @editplan
-                <button type="button" x-data @click="$dispatch('open-modal', 'add-project-task')" class="text-sm font-medium text-blue-600 hover:underline">+ Add Task</button>
-                @endeditplan
-            </x-slot>
-
-            <div class="overflow-x-auto -mx-5 -mb-5">
-                <table class="min-w-full text-sm">
-                    <thead>
-                        <tr class="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-100">
-                            <th class="px-5 py-2">Task</th>
-                            <th class="px-5 py-2">Owner</th>
-                            <th class="px-5 py-2">Due Date</th>
-                            <th class="px-5 py-2">Status</th>
-                            <th class="px-5 py-2 w-40">Progress</th>
-                            <th class="px-5 py-2"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        @forelse ($project->projectTasks as $task)
-                            <tr class="hover:bg-blue-50 {{ $task->is_overdue ? 'bg-red-50' : '' }}">
-                                <td class="px-5 py-3 font-medium text-slate-800">{{ $task->name }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $task->owner?->name ?? '-' }}</td>
-                                <td class="px-5 py-3 text-slate-600">
-                                    {{ optional($task->due_date)->thaiDate() ?? '-' }}
-                                    @if ($task->is_overdue)<span class="text-xs text-red-600 font-semibold ml-1">Late</span>@endif
-                                </td>
-                                <td class="px-5 py-3"><x-status-badge :status="$task->status" /></td>
-                                <td class="px-5 py-3"><x-progress-bar :value="$task->progress" size="sm" /></td>
-                                <td class="px-5 py-3 text-right">
-                                    @editplan
-                                    <button type="button" x-data @click="$dispatch('open-modal', 'edit-project-task-{{ $task->id }}')" class="text-xs font-medium text-blue-600 hover:underline">Edit</button>
-                                    <form method="POST" action="{{ route('project-tasks.destroy', $task) }}" class="inline" onsubmit="return confirm('ลบงานนี้?')">
-                                        @csrf @method('DELETE')
-                                        <button class="text-xs font-medium text-red-600 hover:underline ml-2">Delete</button>
-                                    </form>
-                                    @endeditplan
-                                </td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="6" class="px-5 py-6 text-center text-slate-400">ยังไม่มีงานโครงการ</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </x-card>
-
-        </div>
-
-        <div x-show="tab === 'cabinets'" x-cloak class="space-y-6">
-
-        <x-card>
-            <x-progress-bar :value="$project->production_progress" label="Production Progress" />
-
-            @php $summary = $project->cabinet_summary; @endphp
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-100">
-                <div>
-                    <p class="text-xs text-slate-500">Total Cabinets</p>
-                    <p class="text-lg font-bold text-slate-900">{{ $summary['total'] }}</p>
-                </div>
-                <div>
-                    <p class="text-xs text-slate-500">Completed</p>
-                    <p class="text-lg font-bold text-emerald-600">{{ $summary['completed'] }}</p>
-                </div>
-                <div>
-                    <p class="text-xs text-slate-500">In Progress</p>
-                    <p class="text-lg font-bold text-blue-600">{{ $summary['in_progress'] }}</p>
-                </div>
-                <div>
-                    <p class="text-xs text-slate-500">Not Started</p>
-                    <p class="text-lg font-bold text-slate-500">{{ $summary['not_started'] }}</p>
-                </div>
-            </div>
-        </x-card>
-
-        <!-- Cabinets Overview -->
-        <x-card id="cabinets-section" title="Cabinets" :subtitle="$project->cabinets->count().' ตู้ในโครงการนี้'">
-            <x-slot name="actions">
-                @editplan
-                <button type="button" x-data @click="$dispatch('open-modal', 'checklist-bulk')" class="mr-4 text-sm font-medium text-blue-600 hover:underline">แก้ Checklist ทั้งโครงการ</button>
-                <button type="button" x-data @click="$dispatch('open-modal', 'add-cabinet')" class="text-sm font-medium text-blue-600 hover:underline">+ Add Cabinet</button>
-                @endeditplan
-            </x-slot>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                @forelse ($project->cabinets as $cabinet)
-                    {{-- straight to the cabinet's full page (Back returns here, on this tab) --}}
-                    <a href="{{ route('cabinets.show', $cabinet) }}"
-                       class="flex flex-col bg-white rounded-xl border border-slate-200 p-5 hover:border-blue-300 hover:shadow-md transition">
-                        <!-- Header -->
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <p class="text-base font-bold text-slate-900 leading-snug">{{ $cabinet->mo_no }}</p>
-                                <p class="text-xs text-slate-500 mt-0.5">{{ $cabinet->cabinet_name }}</p>
-                                <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-                                    <span class="text-[11px] whitespace-nowrap shrink-0 {{ $cabinet->due_date ? 'text-slate-400' : 'text-slate-300' }}">Due: {{ optional($cabinet->due_date)->thaiDate() ?? '-' }}</span>
-                                    @if ($cabinet->days_remaining !== null && $cabinet->status !== 'completed')
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap shrink-0
-                                            {{ $cabinet->days_remaining < 0 ? 'bg-red-100 text-red-700' : ($cabinet->days_remaining <= 7 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500') }}">
-                                            {{ $cabinet->days_remaining >= 0 ? 'เหลือ '.$cabinet->days_remaining.' วัน' : 'เลยกำหนด '.abs($cabinet->days_remaining).' วัน' }}
-                                        </span>
-                                    @endif
-                                </div>
-                            </div>
-                            <x-status-badge :status="$cabinet->status" class="shrink-0" />
-                        </div>
-
-                        <div class="flex justify-end">
-                            @editplan
-                            <button type="button" x-data @click.stop.prevent="$dispatch('open-modal', 'copy-cabinet-{{ $cabinet->id }}')"
-                                    class="text-[11px] font-medium text-slate-400 hover:text-blue-600 transition" title="คัดลอกตู้นี้">
-                                คัดลอกตู้
-                            </button>
-                            @endeditplan
-                        </div>
-
-                        <!-- Overall Progress -->
-                        <div class="mt-1">
-                            <div class="flex items-baseline justify-between mb-1.5">
-                                <span class="text-xs font-medium text-slate-500">Progress</span>
-                                {{-- id lets the Cabinet Quick Detail Panel update this card live
-                                     after a checklist toggle, without reloading this page. --}}
-                                <span class="text-sm font-bold text-slate-800" id="cabinet-card-progress-{{ $cabinet->id }}">{{ $cabinet->progress }}%</span>
-                            </div>
-                            <x-progress-bar :value="$cabinet->progress" id="cabinet-{{ $cabinet->id }}" />
-                        </div>
-
-                        <!-- Steps -->
-                        <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 sm:gap-x-5">
-                            @foreach ($cabinet->tasks as $task)
-                                <div class="flex items-start justify-between gap-3 py-1.5 border-b border-slate-100 sm:border-0">
-                                    <span class="text-xs leading-snug line-clamp-2 min-w-0 {{ $task->progress > 0 ? 'text-slate-600' : 'text-slate-400' }}">
-                                        {{ $task->name }}
-                                    </span>
-                                    <span class="text-xs font-semibold shrink-0 tabular-nums leading-snug
-                                        {{ $task->progress >= 100 ? 'text-emerald-600' : ($task->progress > 0 ? 'text-blue-600' : 'text-slate-300') }}">
-                                        {{ $task->progress }}%
-                                    </span>
-                                </div>
-                            @endforeach
-                        </div>
-
-                    </a>
-                @empty
-                    <p class="text-slate-400 text-sm col-span-full text-center py-6">ยังไม่มีตู้ไฟฟ้าในโครงการนี้</p>
-                @endforelse
-            </div>
-        </x-card>
-
+        <div x-show="tab === 'overview'">
+            @include('projects.partials._overview')
         </div>
 
         @if (auth()->user()->allows('data.files'))

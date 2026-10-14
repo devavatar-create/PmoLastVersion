@@ -41,7 +41,7 @@ class NavigationTest extends TestCase
 
         $this->assertStringContainsString('href="'.route('cabinets.show', $this->cabinet).'"', $html);
         $this->assertStringNotContainsString('openCabinetPanel', $html, 'no quick panel any more');
-        $this->assertStringContainsString("tab: 'cabinets'", $html, 'the tab comes from the URL');
+        $this->assertStringContainsString("tab: 'overview'", $html, 'the old MO tab name lands on the merged ภาพรวม tab');
         $this->assertStringContainsString('keepTabInUrl', $html, 'and goes back into it');
     }
 

@@ -58,7 +58,7 @@ class ProjectFormFieldsTest extends TestCase
         $this->assertSame([87500.0, 1337500.0], [$p->vatAmount(), $p->contractValueWithVat()], 'VAT 7% worked out, not stored');
 
         $this->actingAs($admin)->get(route('projects.show', $p))->assertOk()
-            ->assertSeeInOrder(['มูลค่างาน (ก่อน VAT)', '1,250,000.00', 'VAT 7%', '87,500.00', 'มูลค่างานรวม VAT 7%', '1,337,500.00', 'Margin', '225,000.50', '18 %'])
+            ->assertSeeInOrder(['มูลค่างาน', '1,337,500.00', 'รวม VAT 7%', 'ก่อน VAT', '1,250,000.00', 'VAT 7%', '87,500.00', 'Margin', '225,000.50', '18 %'])
             ->assertSee('081-234-5678')
             ->assertDontSee('ใบสั่งขาย / อ้างอิง')->assertDontSee('เจ้าของโครงการ');
     }

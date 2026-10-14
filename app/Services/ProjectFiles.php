@@ -316,6 +316,18 @@ class ProjectFiles
         return ProjectFolder::where('cabinet_id', $cabinet->id)->first();
     }
 
+    /** The newest files this person may see (current versions), for the project overview's "ไฟล์ล่าสุด". */
+    public function latest(Project $project, User $user, int $limit = 3): array
+    {
+        $all = $this->folders($project);
+
+        return ProjectFile::where('project_id', $project->id)->where('is_current', true)->latest('id')->limit($limit * 5)->get()
+            ->reject(fn ($f) => $this->hidden($all->get($f->folder_id), $all, $user))
+            ->take($limit)
+            ->map(fn ($f) => ['name' => $f->name, 'url' => route('project-files.download', [$f, 'inline' => 1]), 'at' => $f->created_at?->thaiDate()])
+            ->values()->all();
+    }
+
     /** How many files (current versions) a project has, or one folder (with its sub folders). */
     public function count(Project $project, ?ProjectFolder $folder = null, ?User $user = null): int
     {

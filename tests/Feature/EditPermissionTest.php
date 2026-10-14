@@ -77,13 +77,13 @@ class EditPermissionTest extends TestCase
         $this->get(route('cabinet-templates.create'))->assertForbidden();
         $this->assertNotNull(Project::find($this->project->id));
 
-        $this->get(route('projects.show', $this->project))->assertOk()->assertDontSee(route('projects.edit', $this->project))->assertDontSee('+ Add Cabinet');
+        $this->get(route('projects.show', $this->project))->assertOk()->assertDontSee(route('projects.edit', $this->project))->assertDontSee('+ เพิ่มตู้');
         $this->get(route('cabinets.show', $this->cabinet))->assertOk()->assertDontSee(route('cabinets.edit', $this->cabinet));
         $this->get(route('projects.index'))->assertOk()->assertDontSee(route('projects.create'));
         $this->assertFalse($this->get(route('planning.board'))->viewData('config')['canEdit']);
 
         $admin = $this->user(null, 'admin');
-        $this->actingAs($admin)->get(route('projects.show', $this->project))->assertSee(route('projects.edit', $this->project))->assertSee('+ Add Cabinet');
+        $this->actingAs($admin)->get(route('projects.show', $this->project))->assertSee(route('projects.edit', $this->project))->assertSee('+ เพิ่มตู้');
     }
 
     public function test_the_department_still_does_its_work(): void

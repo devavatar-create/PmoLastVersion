@@ -228,3 +228,28 @@ details.group[open] > summary {
 
 /* keep the page width the same whether or not it scrolls (pages and settings tabs do not jump sideways) */
 html { scrollbar-gutter: stable; }
+
+/* Project page "ภาพรวม": one row per cabinet. Narrow (phone, or beside the facts panel on a small laptop): name + %,
+   the step cells, then where it is now. Wide enough: name | a cell per step | where it is now | % | actions. */
+.pmo-cab-table { container-type: inline-size; }
+.pmo-cab-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name pct" "strip strip" "now act";
+    align-items: center;
+    gap: 0.375rem 0.75rem;
+}
+.pmo-cab-grid > .a-name { grid-area: name; }
+.pmo-cab-grid > .a-strip { grid-area: strip; }
+.pmo-cab-grid > .a-now { grid-area: now; }
+.pmo-cab-grid > .a-pct { grid-area: pct; }
+.pmo-cab-grid > .a-act { grid-area: act; }
+.pmo-cab-head { display: none; }
+@container (min-width: 44rem) {
+    .pmo-cab-grid {
+        grid-template-columns: minmax(9rem, 1fr) minmax(13rem, 1.35fr) minmax(13.5rem, 1.35fr) 2.75rem 4.5rem;
+        grid-template-areas: "name strip now pct act";
+        column-gap: 0.875rem;
+    }
+    .pmo-cab-head { display: grid; }
+}
