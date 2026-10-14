@@ -82,6 +82,40 @@ class SubtaskAssignmentService
         });
     }
 
+    /**
+     * Dispatch many sub tasks at once (a whole step across the project's cabinets, or rows ticked on a cabinet page).
+     * Each one goes through changeDepartment() - same lock, same rules, same log line - and the departments get one
+     * notice per project instead of one per sub task. Work a department already accepted is skipped and counted,
+     * never changed.
+     *
+     * @param  list<int>  $subtaskIds
+     * @return array{changed: list<CabinetSubtask>, unchanged: int, locked: int}
+     */
+    public function changeDepartments(array $subtaskIds, ?int $departmentId, User $actor): array
+    {
+        if (! $actor->canDispatchWork()) {
+            throw new AssignmentException('เฉพาะผู้ดูแลระบบ (Admin) หรือ Project Manager เท่านั้นที่มีสิทธิ์จ่ายงาน', 403);
+        }
+
+        return $this->notifications->batch(function () use ($subtaskIds, $departmentId, $actor) {
+            $out = ['changed' => [], 'unchanged' => 0, 'locked' => 0];
+            foreach (CabinetSubtask::whereKey(array_unique($subtaskIds))->orderBy('id')->get() as $subtask) {
+                if ($subtask->is_department_locked && $subtask->department_id !== $departmentId) {
+                    $out['locked']++;
+
+                    continue;
+                }
+                try {
+                    $this->changeDepartment($subtask, $departmentId, $actor) ? $out['changed'][] = $subtask : $out['unchanged']++;
+                } catch (AssignmentException) {
+                    $out['locked']++;   // accepted by the department between loading and locking the row
+                }
+            }
+
+            return $out;
+        });
+    }
+
     public function accept(CabinetSubtask $subtask, User $actor): CabinetSubtask
     {
         return $this->transition($subtask, $actor, CabinetSubtask::ASSIGNMENT_ASSIGNED, CabinetSubtask::ASSIGNMENT_ACCEPTED, 'accepted', 'accepted_by', 'accepted_at',

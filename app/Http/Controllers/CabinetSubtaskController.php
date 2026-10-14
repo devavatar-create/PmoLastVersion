@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\CabinetSubtask;
 use App\Models\DateLimitRule;
 use App\Models\Department;
+use App\Models\Project;
 use App\Services\ProgressService;
 use App\Services\SubtaskAssignmentService;
+use App\Services\WorkScope;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -90,6 +92,42 @@ class CabinetSubtaskController extends Controller
         );
 
         return $this->respond($request, $cabinetSubtask, $changed ? 'เปลี่ยนแผนกเรียบร้อย' : 'ไม่มีการเปลี่ยนแปลง');
+    }
+
+    /** Dispatch several sub tasks to one department in one go (cabinet page ticks, or a whole step on the project page). */
+    public function bulkDepartment(Request $request)
+    {
+        $data = $request->validate([
+            'subtask_ids' => ['required', 'array', 'min:1', 'max:1000'],
+            'subtask_ids.*' => ['integer'],
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+        ]);
+
+        // no project in the URL, so the visibility middleware cannot see it: every project named here must be open to this person
+        $projects = Project::whereHas('cabinets.tasks.subtasks', fn ($q) => $q->whereKey($data['subtask_ids']))->get();
+        abort_if($projects->contains(fn ($p) => ! WorkScope::canSeeProject($p, $request->user())), 403, 'คุณไม่มีสิทธิ์เปิดโครงการนี้');
+
+        $result = $this->assignments->changeDepartments($data['subtask_ids'], $data['department_id'] ?? null, $request->user());
+        $changed = count($result['changed']);
+        $department = isset($data['department_id']) ? Department::find($data['department_id'])?->name : null;
+        $message = $changed
+            ? ($department ? "จ่ายงาน {$changed} งานให้แผนก {$department} แล้ว" : "ยกเลิกการจ่ายงาน {$changed} งานแล้ว")
+            : 'ไม่มีการเปลี่ยนแปลง';
+        if ($result['locked']) {
+            $message .= " · ข้าม {$result['locked']} งานที่แผนกรับไปแล้ว (เปลี่ยนแผนกไม่ได้)";
+        }
+
+        $departments = Department::orderBy('name')->get();
+
+        return response()->json([
+            'message' => $message,
+            'changed' => $changed,
+            'locked' => $result['locked'],
+            'rows' => collect($result['changed'])->map(fn ($s) => [
+                'assignment' => $this->assignments->payload($s, $request->user()),
+                'html' => view('cabinets.partials._assignment', ['subtask' => $s, 'departments' => $departments])->render(),
+            ])->values(),
+        ]);
     }
 
     public function accept(Request $request, CabinetSubtask $cabinetSubtask)

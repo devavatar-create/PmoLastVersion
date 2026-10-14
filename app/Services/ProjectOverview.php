@@ -37,6 +37,7 @@ class ProjectOverview
             'timeline' => $this->timeline($project, $today),
             'groups' => $this->groups($rows),
             'cabinetCount' => $cabinets->count(),
+            'canDispatch' => $user->canDispatchWork() && ! $project->isLocked(),
             'departments' => $this->departments($subtasks, $late, $user),
             'startedNotAccepted' => $subtasks->where('assignment_status', CabinetSubtask::ASSIGNMENT_ASSIGNED)->where('progress', '>', 0)->count(),
             'unassigned' => $subtasks->where('assignment_status', CabinetSubtask::ASSIGNMENT_UNASSIGNED)->count(),
@@ -57,6 +58,7 @@ class ProjectOverview
             return [
                 'no' => $i + 1, 'name' => $task->name, 'label' => $label, 'pct' => (int) $task->progress, 'department' => $departments ?: '-',
                 'lateCount' => $overdue->count(), 'lateDays' => $days,
+                'subtasks' => $task->subtasks->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'department' => $s->department?->name, 'locked' => $s->is_department_locked])->all(),
                 'tip' => $label.' · '.(int) $task->progress.'%'.($days !== null ? ' · เลยกำหนด '.$days.' วัน' : ''),
             ];
         });
@@ -167,12 +169,28 @@ class ProjectOverview
 
             return [
                 'templateName' => $first['templateName'],
-                'steps' => collect($first['steps'])->map(fn ($s) => ['no' => $s['no'], 'label' => $s['label']])->all(),
+                'steps' => collect($first['steps'])->map(fn ($s, $i) => ['no' => $s['no'], 'label' => $s['label'], 'parts' => $this->stepParts($list, $i)])->all(),
                 'count' => $list->count(),
                 'batches' => $batches->all(),
                 'showBatches' => $batches->count() > 1,
             ];
         })->values()->all();
+    }
+
+    /**
+     * One step across every cabinet of a template, split by sub task name ("2.1 รื้อตู้ Housing", "2.2 รื้อตู้ RMU"): what the
+     * project page's "จ่ายงานทั้งขั้น" offers. Ids of work a department already accepted are left out (it cannot move).
+     */
+    private function stepParts(Collection $rows, int $index): array
+    {
+        return $rows->flatMap(fn ($r) => $r['steps'][$index]['subtasks'] ?? [])
+            ->groupBy('name')
+            ->map(fn ($list, $name) => [
+                'name' => $name,
+                'ids' => $list->where('locked', false)->pluck('id')->values()->all(),
+                'locked' => $list->where('locked', true)->count(),
+                'departments' => $list->pluck('department')->map(fn ($d) => $d ?? 'ยังไม่จ่าย')->countBy()->map(fn ($n, $d) => "{$d} ({$n})")->implode(', '),
+            ])->values()->all();
     }
 
     /** Work each department holds here; whoever does not see every department only gets their own. */

@@ -48,6 +48,39 @@
         document.dispatchEvent(new CustomEvent('pmo:assignment-updated', { detail: data }));
     }
 
+    /** Many sub tasks to one department in one request (rules and logs as one by one; one notice per department). */
+    async function bulkDispatch(url, ids, departmentId) {
+        const data = await assignmentRequest(url, 'POST', { subtask_ids: ids, department_id: departmentId ? Number(departmentId) : null });
+        (data.rows || []).forEach(applyAssignment);
+        window.showToast(data.message, data.changed ? 'success' : 'error');
+        return data;
+    }
+
+    /** Project page: "จ่ายงานทั้งขั้น" dialog - one step of every cabinet in a template group. */
+    function pmoStepDispatch(steps) {
+        return {
+            steps, step: null, picked: [], department: '', busy: false,
+            get current() { return this.step === null ? null : this.steps[this.step]; },
+            open(i) {
+                this.step = i;
+                this.picked = this.steps[i].parts.map((p, k) => (p.ids.length ? k : null)).filter((k) => k !== null);
+            },
+            ids() { return this.current ? this.picked.flatMap((k) => this.current.parts[k].ids) : []; },
+            async send(url) {
+                this.busy = true;
+                try {
+                    const data = await bulkDispatch(url, this.ids(), this.department);
+                    if (data.changed) setTimeout(() => location.reload(), 600);   // the overview's numbers are worked out on the server
+                    this.step = null;
+                } catch (err) {
+                    window.showToast(err.message, 'error');
+                } finally {
+                    this.busy = false;
+                }
+            },
+        };
+    }
+
     document.addEventListener('change', async (e) => {
         if (!e.target.matches('.assignment-department-select')) return;
 

@@ -179,7 +179,7 @@
                     <h3 class="text-sm font-bold text-ae-navy">งานตามแผนก</h3>
                     <span class="text-xs text-slate-500">
                         @if ($overview['unassigned'])ยังไม่จ่ายงาน {{ $overview['unassigned'] }} งาน @else จ่ายครบทุกงานแล้ว @endif
-                        @if ($overview['startedNotAccepted']) · {{ $overview['startedNotAccepted'] }} งานเริ่มทำแล้วแต่ยังไม่กดรับงาน @endif
+                        @if ($overview['startedNotAccepted']) · {{ $overview['startedNotAccepted'] }} งานมี Checklist คืบหน้าแล้ว แต่แผนกยังไม่กดรับงาน @endif
                     </span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
@@ -214,7 +214,7 @@
 
             @forelse ($overview['groups'] as $group)
                 @php $cols = 'grid-template-columns: repeat('.max(1, count($group['steps'])).', minmax(0, 1fr))'; @endphp
-                <div class="border-t border-slate-100">
+                <div class="border-t border-slate-100" @if ($overview['canDispatch']) x-data="pmoStepDispatch(@js(collect($group['steps'])->map(fn ($s) => ['label' => $s['label'], 'parts' => $s['parts']])))" @endif>
                     @if (count($overview['groups']) > 1)
                         <div class="px-4 pb-1 pt-3 text-sm font-bold text-ae-navy">{{ $group['templateName'] ?? 'Template อื่น' }} <span class="font-medium text-slate-500">· {{ count($group['steps']) }} ขั้นตอน · {{ $group['count'] }} ตู้</span></div>
                     @endif
@@ -229,8 +229,13 @@
                             <div role="row" class="pmo-cab-grid pmo-cab-head border-y border-slate-100 bg-slate-50 px-4 py-1.5 text-xs font-semibold text-slate-500">
                                 <span role="columnheader" class="a-name">ตู้ / MO</span>
                                 <span role="columnheader" class="a-strip grid gap-[3px] text-center" style="{{ $cols }}">
-                                    @foreach ($group['steps'] as $s)
-                                        <span title="{{ $s['label'] }}" class="text-[11px] tabular-nums">{{ $s['no'] }}</span>
+                                    @foreach ($group['steps'] as $si => $s)
+                                        @if ($overview['canDispatch'])
+                                            <button type="button" @click="open({{ $si }})" title="{{ $s['label'] }} — กดเพื่อจ่ายงานขั้นนี้ทุกตู้" aria-label="จ่ายงานขั้น {{ $s['label'] }} ทุกตู้"
+                                                    class="rounded text-[11px] font-bold tabular-nums text-[#0F4C81] hover:bg-[#EAF4FF]">{{ $s['no'] }}</button>
+                                        @else
+                                            <span title="{{ $s['label'] }}" class="text-[11px] tabular-nums">{{ $s['no'] }}</span>
+                                        @endif
                                     @endforeach
                                 </span>
                                 <span role="columnheader" class="a-now">ขั้นปัจจุบัน / สถานะ</span>
@@ -303,6 +308,9 @@
                             @endforeach
                         </div>
                     </div>
+                    @if ($overview['canDispatch'])
+                        @include('projects.partials._step-dispatch')
+                    @endif
                 </div>
             @empty
                 <p class="border-t border-slate-100 px-4 py-8 text-center text-sm text-slate-400">ยังไม่มีตู้ไฟฟ้าในโครงการนี้</p>

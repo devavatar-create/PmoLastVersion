@@ -24,6 +24,13 @@
         $late = fn ($s) => $s->due_date && $s->due_date->lt(today()) && $s->status !== \App\Models\CabinetSubtask::STATUS_COMPLETED;
         $byState = $allSubtasks->countBy('assignment_status');
         $expectedLate = $cabinet->expected_completion_date && $cabinet->due_date && $cabinet->expected_completion_date->gt($cabinet->due_date);
+        $canDispatch = auth()->user()->canDispatchWork() && ! $cabinet->project->isLocked();
+        // not dispatched yet, but the template names a department: one click sends each to it
+        $suggested = $allSubtasks->where('assignment_status', \App\Models\CabinetSubtask::ASSIGNMENT_UNASSIGNED)
+            ->filter(fn ($s) => $s->subtaskTemplate?->department_id)
+            ->groupBy(fn ($s) => $s->subtaskTemplate->department_id)
+            ->map(fn ($list, $dept) => ['department' => (int) $dept, 'ids' => $list->pluck('id')->values()->all()])->values();
+        $unassignedIds = $allSubtasks->where('assignment_status', \App\Models\CabinetSubtask::ASSIGNMENT_UNASSIGNED)->pluck('id')->values();
         $taskLabel = fn ($task, $i) => preg_match('/^\d+[.)]\s/u', $task->name) ? $task->name : ($i + 1).'. '.$task->name;   // templates often number their steps already
     @endphp
 
@@ -144,6 +151,13 @@
 
             {{-- ===== the work list ===== --}}
             <div class="min-w-0 flex-1 basis-[32rem] space-y-4">
+                <div class="space-y-4" @if ($canDispatch) x-data="{ selected: [], department: '', busy: false,
+                        async send(ids, department) {
+                            this.busy = true;
+                            try { await bulkDispatch('{{ route('cabinet-subtasks.bulk-department') }}', ids, department); this.selected = []; }
+                            catch (err) { window.showToast(err.message, 'error'); }
+                            finally { this.busy = false; }
+                        } }" @endif>
                 <section aria-label="สรุปการจ่ายงาน" class="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                     <span>ยังไม่จ่าย <strong class="{{ ($byState['UNASSIGNED'] ?? 0) ? 'text-amber-700' : 'text-slate-800' }}">{{ $byState['UNASSIGNED'] ?? 0 }}</strong></span>
                     <span>รอรับงาน <strong class="text-slate-800">{{ $byState['ASSIGNED'] ?? 0 }}</strong></span>
@@ -152,7 +166,35 @@
                     @if ($allSubtasks->filter($late)->count())
                         <span>เลยกำหนด <strong class="text-amber-700">{{ $allSubtasks->filter($late)->count() }}</strong></span>
                     @endif
+                    @if ($canDispatch && ($suggested->isNotEmpty() || $unassignedIds->isNotEmpty()))
+                        <span class="ml-auto flex flex-wrap gap-2">
+                            @if ($unassignedIds->isNotEmpty())
+                                <button type="button" @click="selected = @js($unassignedIds)" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-[#0F4C81] hover:bg-slate-50">เลือกที่ยังไม่จ่าย ({{ $unassignedIds->count() }})</button>
+                            @endif
+                            @if ($suggested->isNotEmpty())
+                                <button type="button" :disabled="busy" class="rounded-lg border border-[#0F4C81] px-3 py-1.5 text-sm font-semibold text-[#0F4C81] hover:bg-[#EAF4FF] disabled:opacity-50"
+                                        @click="(async () => { for (const g of @js($suggested)) { await send(g.ids, g.department); } })()">จ่ายตามแผนกที่แนะนำ ({{ $suggested->sum(fn ($g) => count($g['ids'])) }})</button>
+                            @endif
+                        </span>
+                    @endif
                 </section>
+
+                @if ($canDispatch)
+                    <div x-show="selected.length" x-cloak class="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-ae-navy px-4 py-2.5 text-white shadow-lg">
+                        <span class="text-sm font-bold" x-text="'เลือก ' + selected.length + ' งาน'"></span>
+                        <span class="flex flex-wrap items-center gap-2">
+                            <label for="bulk-dept" class="text-sm">จ่ายให้แผนก</label>
+                            <select id="bulk-dept" x-model="department" class="rounded-lg border-0 py-1.5 text-sm text-slate-800">
+                                <option value="">— เลือกแผนก —</option>
+                                @foreach ($departments->where('is_active', true) as $d)
+                                    <option value="{{ $d->id }}">{{ $d->name }}</option>
+                                @endforeach
+                            </select>
+                            <button type="button" @click="send(selected, department)" :disabled="busy || ! department" class="rounded-lg bg-white px-4 py-1.5 text-sm font-semibold text-ae-navy hover:bg-slate-100 disabled:opacity-50">จ่ายงาน</button>
+                            <button type="button" @click="selected = []" class="px-2 py-1.5 text-sm font-medium text-slate-300 hover:text-white">ยกเลิก</button>
+                        </span>
+                    </div>
+                @endif
 
                 <section aria-label="งานของตู้" class="pmo-work-table rounded-xl border border-slate-200 bg-white shadow-sm">
                     <div class="pmo-work-grid pmo-work-head rounded-t-xl border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-500">
@@ -194,6 +236,9 @@
                                 <div class="pmo-work-grid px-4 py-2.5 hover:bg-slate-50/70">
                                     <div class="a-name min-w-0">
                                         <div class="flex flex-wrap items-center gap-2">
+                                            @if ($canDispatch && ! $subtask->is_department_locked)
+                                                <input type="checkbox" x-model.number="selected" value="{{ $subtask->id }}" class="h-4 w-4 rounded border-slate-300 text-[#0F4C81]" aria-label="เลือก {{ $subtask->name }} เพื่อจ่ายงาน">
+                                            @endif
                                             <span class="text-sm font-semibold text-slate-800">{{ $subtask->name }}</span>
                                             <x-status-badge :status="$subtask->status" id="subtask-{{ $subtask->id }}" />
                                         </div>
@@ -241,6 +286,7 @@
                         @endforelse
                     @endforeach
                 </section>
+                </div>
             </div>
         </div>
     </div>
