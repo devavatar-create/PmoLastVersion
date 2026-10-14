@@ -86,19 +86,21 @@ class SubtaskAssignmentService
      * Dispatch many sub tasks at once (a whole step across the project's cabinets, or rows ticked on a cabinet page).
      * Each one goes through changeDepartment() - same lock, same rules, same log line - and the departments get one
      * notice per project instead of one per sub task. Work a department already accepted is skipped and counted,
-     * never changed.
+     * never changed. With $dueDate, every sub task sent (or already with that department) gets it as its due date;
+     * the caller checks Settings > Automation's date limits first.
      *
      * @param  list<int>  $subtaskIds
-     * @return array{changed: list<CabinetSubtask>, unchanged: int, locked: int}
+     * @return array{changed: list<CabinetSubtask>, unchanged: int, locked: int, dated: int}
      */
-    public function changeDepartments(array $subtaskIds, ?int $departmentId, User $actor): array
+    public function changeDepartments(array $subtaskIds, ?int $departmentId, User $actor, ?string $dueDate = null): array
     {
         if (! $actor->canDispatchWork()) {
             throw new AssignmentException('เฉพาะผู้ดูแลระบบ (Admin) หรือ Project Manager เท่านั้นที่มีสิทธิ์จ่ายงาน', 403);
         }
 
-        return $this->notifications->batch(function () use ($subtaskIds, $departmentId, $actor) {
-            $out = ['changed' => [], 'unchanged' => 0, 'locked' => 0];
+        $redated = collect();   // already this department's: their date moved, which the "new work" notice does not cover
+        $out = $this->notifications->batch(function () use ($subtaskIds, $departmentId, $actor, $dueDate, $redated) {
+            $out = ['changed' => [], 'unchanged' => 0, 'locked' => 0, 'dated' => 0];
             foreach (CabinetSubtask::whereKey(array_unique($subtaskIds))->orderBy('id')->get() as $subtask) {
                 if ($subtask->is_department_locked && $subtask->department_id !== $departmentId) {
                     $out['locked']++;
@@ -106,14 +108,28 @@ class SubtaskAssignmentService
                     continue;
                 }
                 try {
-                    $this->changeDepartment($subtask, $departmentId, $actor) ? $out['changed'][] = $subtask : $out['unchanged']++;
+                    $changed = $this->changeDepartment($subtask, $departmentId, $actor);
                 } catch (AssignmentException) {
                     $out['locked']++;   // accepted by the department between loading and locking the row
+
+                    continue;
+                }
+                $changed ? $out['changed'][] = $subtask : $out['unchanged']++;
+
+                if ($dueDate && $departmentId && $subtask->fresh()->due_date?->format('Y-m-d') !== $dueDate) {
+                    $subtask->refresh()->update(['due_date' => $dueDate]);   // a normal save: the change log and the closed-project guard apply
+                    $out['dated']++;
+                    $changed ?: $redated->push($subtask->fresh('cabinetTask.cabinet.project'));
                 }
             }
 
             return $out;
         });
+        if ($redated->isNotEmpty()) {
+            $this->notifications->dueChanged($redated, $actor);
+        }
+
+        return $out;
     }
 
     public function accept(CabinetSubtask $subtask, User $actor): CabinetSubtask

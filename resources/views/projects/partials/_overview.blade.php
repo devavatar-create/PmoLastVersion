@@ -190,6 +190,15 @@
                                 <span>ค้าง <strong class="text-sm text-slate-800">{{ $d['open'] }}</strong></span>
                                 <span>เลยกำหนด <strong class="text-sm {{ $d['late'] ? 'text-amber-700' : 'text-slate-800' }}">{{ $d['late'] }}</strong></span>
                             </div>
+                            @if ($d['waitingIds'])
+                                <div class="mt-1.5 flex items-center justify-between gap-2 text-xs text-slate-500">
+                                    <span>รอรับ {{ count($d['waitingIds']) }} · นานสุด {{ $d['waitingDays'] }} วัน</span>
+                                    @if ($overview['canDispatch'])
+                                        <button type="button" onclick="pmoRemind('{{ route('cabinet-subtasks.remind') }}', @js($d['waitingIds']), this)"
+                                                class="rounded-md border border-amber-500 px-1.5 py-0.5 font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50">ทวงถาม</button>
+                                    @endif
+                                </div>
+                            @endif
                         </div>
                     @endforeach
                 </div>

@@ -18,7 +18,7 @@ use Illuminate\Support\Collection;
 class ProjectOverview
 {
     /** Activity rows worth showing on the overview (no field-by-field edits, no checklist ticks). */
-    private const FEED_ACTIONS = ['assigned', 'accepted', 'started', 'completed', 'note', 'files'];
+    private const FEED_ACTIONS = ['assigned', 'accepted', 'started', 'completed', 'note', 'files', 'reminded'];
 
     private const OPEN_ASSIGNMENTS = [CabinetSubtask::ASSIGNMENT_ASSIGNED, CabinetSubtask::ASSIGNMENT_ACCEPTED, CabinetSubtask::ASSIGNMENT_IN_PROGRESS];
 
@@ -199,7 +199,13 @@ class ProjectOverview
         return $subtasks->filter(fn ($s) => $s->department && in_array($s->assignment_status, self::OPEN_ASSIGNMENTS, true))
             ->when(! $user->canSeeAllWork(), fn ($c) => $c->where('department_id', $user->department_id))
             ->groupBy(fn ($s) => $s->department->name)
-            ->map(fn ($list, $name) => ['name' => $name, 'open' => $list->count(), 'late' => $list->filter($late)->count()])
+            ->map(function ($list, $name) use ($late) {
+                $waiting = $list->where('assignment_status', CabinetSubtask::ASSIGNMENT_ASSIGNED);
+
+                return ['name' => $name, 'open' => $list->count(), 'late' => $list->filter($late)->count(),
+                    'waitingIds' => $waiting->pluck('id')->values()->all(),   // for "ทวงถาม"
+                    'waitingDays' => (int) $waiting->max(fn ($s) => $s->assigned_at ? (int) $s->assigned_at->diffInDays(now()) : 0)];
+            })
             ->sortByDesc(fn ($d) => [$d['late'], $d['open']])->values()->all();
     }
 

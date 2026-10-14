@@ -11,19 +11,24 @@
                     <input type="checkbox" class="mt-0.5 rounded border-slate-300 text-[#0F4C81]" :value="i" x-model.number="picked" :disabled="! part.ids.length">
                     <span class="min-w-0">
                         <span class="font-semibold text-slate-800" x-text="part.name"></span>
-                        <span class="block text-xs text-slate-500" x-text="part.ids.length + ' งานที่จ่ายได้ · ตอนนี้: ' + part.departments + (part.locked ? ' · รับงานแล้ว ' + part.locked + ' (ข้าม)' : '')"></span>
+                        <span class="block text-xs text-slate-500" x-text="part.ids.length + ' งานที่จ่ายได้ · ตอนนี้: ' + part.departments + (part.locked ? ' · แผนกรับ/ทำเสร็จแล้ว ' + part.locked + ' (ข้าม)' : '')"></span>
                     </span>
                 </label>
             </template>
         </div>
         <div class="flex flex-wrap items-center gap-2 border-t border-slate-100 px-5 py-4">
-            <label for="step-dispatch-dept" class="text-sm text-slate-600">จ่ายให้แผนก</label>
-            <select id="step-dispatch-dept" x-model="department" class="min-w-0 flex-1 rounded-lg border-slate-300 text-sm">
+            <label for="step-dispatch-dept" class="w-[5.5rem] shrink-0 whitespace-nowrap text-sm text-slate-600">จ่ายให้แผนก</label>
+            <select id="step-dispatch-dept" x-model="department" class="min-w-0 flex-1 basis-56 rounded-lg border-slate-300 text-sm">
                 <option value="">— เลือกแผนก —</option>
                 @foreach ($departments->where('is_active', true) as $d)
                     <option value="{{ $d->id }}">{{ $d->name }}</option>
                 @endforeach
             </select>
+            <div class="flex w-full flex-wrap items-center gap-2">
+                <label for="step-dispatch-due" class="w-[5.5rem] shrink-0 whitespace-nowrap text-sm text-slate-600">กำหนดส่ง</label>
+                <input id="step-dispatch-due" type="date" x-model="due" class="rounded-lg border-slate-300 text-sm">
+                <span class="text-xs text-slate-400">ไม่ใส่ = ใช้วันเดิมของแต่ละงาน</span>
+            </div>
             <div class="flex w-full justify-end gap-2 pt-1">
                 <button type="button" @click="step = null" class="px-3 py-2 text-sm font-medium text-slate-600">ยกเลิก</button>
                 <button type="button" @click="send('{{ route('cabinet-subtasks.bulk-department') }}')" :disabled="busy || ! department || ! ids().length"

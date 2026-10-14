@@ -49,8 +49,8 @@
     }
 
     /** Many sub tasks to one department in one request (rules and logs as one by one; one notice per department). */
-    async function bulkDispatch(url, ids, departmentId) {
-        const data = await assignmentRequest(url, 'POST', { subtask_ids: ids, department_id: departmentId ? Number(departmentId) : null });
+    async function bulkDispatch(url, ids, departmentId, dueDate) {
+        const data = await assignmentRequest(url, 'POST', { subtask_ids: ids, department_id: departmentId ? Number(departmentId) : null, due_date: dueDate || null });
         (data.rows || []).forEach(applyAssignment);
         window.showToast(data.message, data.changed ? 'success' : 'error');
         return data;
@@ -59,7 +59,7 @@
     /** Project page: "จ่ายงานทั้งขั้น" dialog - one step of every cabinet in a template group. */
     function pmoStepDispatch(steps) {
         return {
-            steps, step: null, picked: [], department: '', busy: false,
+            steps, step: null, picked: [], department: '', due: '', busy: false,
             get current() { return this.step === null ? null : this.steps[this.step]; },
             open(i) {
                 this.step = i;
@@ -69,7 +69,7 @@
             async send(url) {
                 this.busy = true;
                 try {
-                    const data = await bulkDispatch(url, this.ids(), this.department);
+                    const data = await bulkDispatch(url, this.ids(), this.department, this.due);
                     if (data.changed) setTimeout(() => location.reload(), 600);   // the overview's numbers are worked out on the server
                     this.step = null;
                 } catch (err) {
@@ -79,6 +79,18 @@
                 }
             },
         };
+    }
+
+    /** "ทวงถาม": remind the departments of work still waiting to be accepted (the server sends at most once a day). */
+    async function pmoRemind(url, ids, button) {
+        if (button) button.disabled = true;
+        try {
+            const data = await assignmentRequest(url, 'POST', { subtask_ids: ids });
+            window.showToast(data.message, data.reminded ? 'success' : 'error');
+        } catch (err) {
+            window.showToast(err.message, 'error');
+            if (button) button.disabled = false;
+        }
     }
 
     document.addEventListener('change', async (e) => {

@@ -107,6 +107,7 @@ Route::middleware(['auth', 'project.visible'])->group(function () {
     Route::delete('cabinet-attachments/{attachment}', [CabinetAttachmentController::class, 'destroy'])->middleware('pmo')->name('cabinet-attachments.destroy');
 
     Route::put('cabinet-tasks/{cabinetTask}', [CabinetTaskController::class, 'update'])->middleware('pmo')->name('cabinet-tasks.update');
+    Route::post('cabinet-subtasks/remind', [CabinetSubtaskController::class, 'remind'])->name('cabinet-subtasks.remind');   // "ทวงถาม" work still รอรับ
     Route::post('cabinet-subtasks/bulk-department', [CabinetSubtaskController::class, 'bulkDepartment'])->name('cabinet-subtasks.bulk-department');   // many at once (cabinet page ticks / a whole step)
     Route::put('cabinet-subtasks/{cabinetSubtask}', [CabinetSubtaskController::class, 'update'])->middleware('pmo')->name('cabinet-subtasks.update');
     Route::delete('cabinet-tasks/{cabinetTask}', [CabinetTaskController::class, 'destroy'])->middleware('pmo')->name('cabinet-tasks.destroy');

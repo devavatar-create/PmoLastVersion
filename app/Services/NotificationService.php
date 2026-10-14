@@ -268,6 +268,37 @@ class NotificationService
     }
 
     /**
+     * "ทวงถาม": Admin / PM reminds the departments of work still "รอรับ" - the same notice as the morning reminder, once a day
+     * per department and project (pressing again the same day sends nothing).
+     *
+     * @return list<array{project: Project, department: string, count: int, sent: int}> per department and project
+     */
+    public function nudge(Collection $subtasks, User $actor): array
+    {
+        $out = [];
+        $today = now()->toDateString();
+        foreach ($subtasks->filter(fn ($s) => $s->department_id && $s->assignment_status === CabinetSubtask::ASSIGNMENT_ASSIGNED)
+            ->groupBy(fn ($s) => $s->department_id.'|'.$s->cabinetTask->cabinet->project_id) as $rows) {
+            $first = $rows->first()->loadMissing('cabinetTask.cabinet.project', 'department');
+            $project = $first->cabinetTask->cabinet->project;
+            $days = (int) $rows->max(fn ($s) => $s->assigned_at ? (int) $s->assigned_at->diffInDays(now()) : 0);
+            $out[] = ['project' => $project, 'department' => $first->department?->name ?? '-', 'count' => $rows->count(), 'sent' => $this->send($this->departmentUsers($first, $actor), new PmoNotice(
+                'waiting',
+                "{$actor->name} ทวงถาม: งานรอรับ {$rows->count()} งาน · {$project->project_no}",
+                "{$project->project_name} · รอมาแล้ว {$days} วัน — กดรับงานในหน้า Planning",
+                route('planning.board', ['project' => $project->id, 'stage' => PlanningBoard::deptKey($first->department_id)]),
+                'nudge:'.$first->department_id.':'.$project->id.':'.$today,
+                projectId: $project->id,
+                group: "project:{$project->id}",
+                parts: ['waiting' => ['n' => $rows->count(), 'days' => $days]],
+                projectLabel: "{$project->project_no} · {$project->project_name}",
+            ), dedupe: true, departmentId: $first->department_id)];
+        }
+
+        return $out;
+    }
+
+    /**
      * Settings > การส่งต่องาน: news from the department passing work on (dates set, items ticked, the daily "due today / late"),
      * folded into each receiver's project notice. Not filtered by "only my department" - it is meant for the receiver.
      */

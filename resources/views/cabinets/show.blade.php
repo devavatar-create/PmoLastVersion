@@ -151,10 +151,10 @@
 
             {{-- ===== the work list ===== --}}
             <div class="min-w-0 flex-1 basis-[32rem] space-y-4">
-                <div class="space-y-4" @if ($canDispatch) x-data="{ selected: [], department: '', busy: false,
-                        async send(ids, department) {
+                <div class="space-y-4" @if ($canDispatch) x-data="{ selected: [], department: '', due: '', busy: false,
+                        async send(ids, department, due) {
                             this.busy = true;
-                            try { await bulkDispatch('{{ route('cabinet-subtasks.bulk-department') }}', ids, department); this.selected = []; }
+                            try { await bulkDispatch('{{ route('cabinet-subtasks.bulk-department') }}', ids, department, due); this.selected = []; }
                             catch (err) { window.showToast(err.message, 'error'); }
                             finally { this.busy = false; }
                         } }" @endif>
@@ -190,7 +190,9 @@
                                     <option value="{{ $d->id }}">{{ $d->name }}</option>
                                 @endforeach
                             </select>
-                            <button type="button" @click="send(selected, department)" :disabled="busy || ! department" class="rounded-lg bg-white px-4 py-1.5 text-sm font-semibold text-ae-navy hover:bg-slate-100 disabled:opacity-50">จ่ายงาน</button>
+                            <label for="bulk-due" class="text-sm">กำหนดส่ง</label>
+                            <input id="bulk-due" type="date" x-model="due" class="rounded-lg border-0 py-1.5 text-sm text-slate-800" title="ไม่ใส่ = ใช้วันเดิมของแต่ละงาน">
+                            <button type="button" @click="send(selected, department, due)" :disabled="busy || ! department" class="rounded-lg bg-white px-4 py-1.5 text-sm font-semibold text-ae-navy hover:bg-slate-100 disabled:opacity-50">จ่ายงาน</button>
                             <button type="button" @click="selected = []" class="px-2 py-1.5 text-sm font-medium text-slate-300 hover:text-white">ยกเลิก</button>
                         </span>
                     </div>
@@ -234,15 +236,17 @@
                         @forelse ($task->subtasks as $subtask)
                             <div x-data="{ open: location.hash === '#subtask-{{ $subtask->id }}' }" id="subtask-{{ $subtask->id }}" class="scroll-mt-20 border-b border-slate-100">
                                 <div class="pmo-work-grid px-4 py-2.5 hover:bg-slate-50/70">
-                                    <div class="a-name min-w-0">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            @if ($canDispatch && ! $subtask->is_department_locked)
-                                                <input type="checkbox" x-model.number="selected" value="{{ $subtask->id }}" class="h-4 w-4 rounded border-slate-300 text-[#0F4C81]" aria-label="เลือก {{ $subtask->name }} เพื่อจ่ายงาน">
-                                            @endif
-                                            <span class="text-sm font-semibold text-slate-800">{{ $subtask->name }}</span>
-                                            <x-status-badge :status="$subtask->status" id="subtask-{{ $subtask->id }}" />
+                                    <div class="a-name flex min-w-0 items-start gap-2">
+                                        @if ($canDispatch && ! $subtask->is_department_locked)
+                                            <input type="checkbox" x-model.number="selected" value="{{ $subtask->id }}" class="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-[#0F4C81]" aria-label="เลือก {{ $subtask->name }} เพื่อจ่ายงาน">
+                                        @endif
+                                        <div class="min-w-0">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span class="text-sm font-semibold text-slate-800">{{ $subtask->name }}</span>
+                                                <x-status-badge :status="$subtask->status" id="subtask-{{ $subtask->id }}" />
+                                            </div>
+                                            <div class="text-xs text-slate-500">Checklist <span id="checklist-count-subtask-{{ $subtask->id }}">{{ $subtask->checklists->where('is_completed', true)->count() }}/{{ $subtask->checklists->count() }}</span></div>
                                         </div>
-                                        <div class="text-xs text-slate-500">Checklist <span id="checklist-count-subtask-{{ $subtask->id }}">{{ $subtask->checklists->where('is_completed', true)->count() }}/{{ $subtask->checklists->count() }}</span></div>
                                     </div>
                                     <div class="a-dept flex flex-wrap items-center gap-2" data-assignment="{{ $subtask->id }}">
                                         @include('cabinets.partials._assignment', ['subtask' => $subtask, 'departments' => $departments])
@@ -257,6 +261,12 @@
                                             @endif
                                         @else
                                             <span class="text-slate-400">-</span>
+                                        @endif
+                                        {{-- waiting to be accepted for a while: a nudge (the server sends at most once a day per department) --}}
+                                        @if ($canDispatch && $subtask->assignment_status === \App\Models\CabinetSubtask::ASSIGNMENT_ASSIGNED && $subtask->assigned_at && $subtask->assigned_at->lte(now()->subDays(max(1, (int) \App\Models\AppSetting::get('waiting_reminder_days')))))
+                                            <button type="button" onclick="pmoRemind('{{ route('cabinet-subtasks.remind') }}', [{{ $subtask->id }}], this)"
+                                                    class="mt-1 rounded-md border border-amber-500 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                                                    title="รอรับมา {{ (int) $subtask->assigned_at->diffInDays(now()) }} วัน — ส่งแจ้งเตือนแผนก">ทวงถาม · {{ (int) $subtask->assigned_at->diffInDays(now()) }} วัน</button>
                                         @endif
                                     </div>
                                     <div class="a-pct flex items-center gap-2">
