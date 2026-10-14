@@ -145,7 +145,7 @@
                                     <p class="text-xs text-slate-500">{{ $project->project_name }}</p>
                                 </td>
                                 <td class="px-5 py-3 text-slate-600">{{ $project->customer_name }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ optional($project->due_date)->format('d/m/Y') ?? '-' }}</td>
+                                <td class="px-5 py-3 text-slate-600">{{ optional($project->due_date)->thaiDate() ?? '-' }}</td>
                                 <td class="px-5 py-3"><x-status-badge :status="$project->status" /></td>
                                 <td class="px-5 py-3"><x-progress-bar :value="$project->production_progress" size="sm" /></td>
                                 <td class="px-5 py-3">

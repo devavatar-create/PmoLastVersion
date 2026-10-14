@@ -51,7 +51,7 @@ class DateLimitRule extends Model
                 ->max('due_date');
 
             if ($anchorDue && $dueDate > substr((string) $anchorDue, 0, 10)) {
-                return 'กำหนดส่งต้องไม่เกินแผนก '.$rule->anchorDepartment->name.' ('.date('d/m/Y', strtotime($anchorDue)).')';
+                return 'กำหนดส่งต้องไม่เกินแผนก '.$rule->anchorDepartment->name.' ('.\Illuminate\Support\Carbon::parse($anchorDue)->thaiDate().')';
             }
         }
 

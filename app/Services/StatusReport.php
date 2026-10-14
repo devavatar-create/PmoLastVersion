@@ -94,7 +94,7 @@ class StatusReport
             ->latest()
             ->limit(50)
             ->get()
-            ->filter(fn ($n) => in_array($n->data['kind'] ?? null, self::URGENT_KINDS, true))
+            ->filter(fn ($n) => ($n->data['urgent'] ?? false) || in_array($n->data['kind'] ?? null, self::URGENT_KINDS, true))
             ->take($limit)
             ->map(fn ($n) => [
                 'id' => $n->id,

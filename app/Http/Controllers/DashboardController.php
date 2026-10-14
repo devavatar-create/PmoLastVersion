@@ -12,10 +12,12 @@ class DashboardController extends Controller
 {
     public function index(Request $request, DepartmentDashboard $departmentDashboard)
     {
-        $projects = Project::withAvg('cabinets', 'progress')
+        $projects = Project::visibleTo($request->user())   // the projects this person may see (WorkScope)
+            ->withAvg('cabinets', 'progress')
             ->withAvg('projectTasks', 'progress')
             ->withCount('cabinets')
             ->get();
+        $cabinets = fn () => Cabinet::whereIn('project_id', $projects->modelKeys());
 
         $activeProjects = $projects->whereNotIn('status', [Project::STATUS_COMPLETED, Project::STATUS_CANCELLED]);
 
@@ -28,10 +30,10 @@ class DashboardController extends Controller
         $delayed = $activeProjects->filter(fn (Project $project) => $project->risk_level === 'overdue');
         $atRisk = $activeProjects->filter(fn (Project $project) => $project->risk_level === 'at_risk');
 
-        $totalCabinets = Cabinet::count();
-        $completedCabinets = Cabinet::where('status', Cabinet::STATUS_COMPLETED)->count();
-        $inProductionCabinets = Cabinet::where('status', Cabinet::STATUS_IN_PROGRESS)->count();
-        $avgProduction = (int) round(Cabinet::avg('progress') ?? 0);
+        $totalCabinets = $cabinets()->count();
+        $completedCabinets = $cabinets()->where('status', Cabinet::STATUS_COMPLETED)->count();
+        $inProductionCabinets = $cabinets()->where('status', Cabinet::STATUS_IN_PROGRESS)->count();
+        $avgProduction = (int) round($cabinets()->avg('progress') ?? 0);
 
         $recentProjects = $projects->sortByDesc('created_at')->take(10);
 

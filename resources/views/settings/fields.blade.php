@@ -3,7 +3,7 @@
         <h2 class="text-lg font-semibold text-slate-900">ตั้งค่า</h2>
     </x-slot>
 
-    <div class="max-w-3xl mx-auto space-y-4">
+    <div class="max-w-none mx-auto space-y-4">
         <x-settings-nav />
 
         @if (! $current)
@@ -22,6 +22,9 @@
             @forelse ($fields as $field)
                 <x-card :title="$field->name" :subtitle="$types[$field->type]">
                     <x-slot name="actions">
+                        <form method="POST" action="{{ route('settings.fields.chip', $field) }}" class="mr-3 inline">@csrf @method('PATCH')
+                            <label class="inline-flex cursor-pointer items-center gap-1 text-xs text-slate-600"><input type="checkbox" onchange="this.form.submit()" @checked($field->show_on_chip) class="rounded border-slate-300 text-blue-600"> แสดงบนปฏิทิน</label>
+                        </form>
                         <form method="POST" action="{{ route('settings.fields.destroy', $field) }}" onsubmit="return confirm('ลบฟิลด์ “{{ $field->name }}”? ตัวเลือกและค่าที่เลือกไว้ในโครงการทั้งหมดจะหาย')">
                             @csrf @method('DELETE')
                             <button class="text-xs font-medium text-red-600 hover:underline">ลบฟิลด์</button>

@@ -9,10 +9,12 @@
     </form>
 
     <div class="flex items-center gap-2 shrink-0">
+        @edittemplates
         <button type="button" @click="editingChecklist = !editingChecklist" class="text-blue-600 hover:underline">Edit</button>
         <form class="checklist-template-delete-form" method="POST" action="{{ route('checklist-templates.destroy', $checklistTemplate) }}" data-confirm="ลบ Checklist นี้?">
             @csrf @method('DELETE')
             <button class="text-red-500 hover:underline">Delete</button>
         </form>
+        @endedittemplates
     </div>
 </li>

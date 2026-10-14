@@ -58,6 +58,7 @@ class Project extends Model
         'project_no',
         'project_name',
         'customer_name',
+        'customer_phone',
         'po_no',
         'sales_order_no',
         'owner_id',
@@ -70,6 +71,8 @@ class Project extends Model
         'description',
         'remark',
         'payment_terms',
+        'contract_value',
+        'margin',
         'job_type_id',
         'status',
         'priority',
@@ -83,8 +86,47 @@ class Project extends Model
         return [
             'start_date' => 'date',
             'due_date' => 'date',
+            'contract_value' => 'decimal:2',
+            'margin' => 'decimal:2',
         ];
     }
+
+    /** Thai VAT on the contract value (มูลค่างาน is before VAT). */
+    public const VAT_RATE = 0.07;
+
+    public function vatAmount(): ?float
+    {
+        return $this->contract_value !== null ? round((float) $this->contract_value * self::VAT_RATE, 2) : null;
+    }
+
+    /** มูลค่างานรวม VAT 7% - worked out, never stored (so it can never disagree with มูลค่างาน). */
+    public function contractValueWithVat(): ?float
+    {
+        return $this->contract_value !== null ? round((float) $this->contract_value + $this->vatAmount(), 2) : null;
+    }
+
+    /** Margin as a share of the contract value (null when either is missing / the value is 0), e.g. 18.5. */
+    public function marginPercent(): ?float
+    {
+        return $this->margin !== null && (float) $this->contract_value > 0 ? round((float) $this->margin / (float) $this->contract_value * 100, 1) : null;
+    }
+
+    /**
+     * An amount typed by a person ("1,250,000", "1 250 000.50", "฿ 3,000") as a plain number string; '' / null stay null.
+     * Anything else is passed through unchanged so validation (numeric) rejects it with a message.
+     */
+    public static function cleanAmount(mixed $value): mixed
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+        $plain = is_string($value) ? preg_replace('/[\s,฿]|บาท/u', '', $value) : $value;
+
+        return is_numeric($plain) ? $plain : $value;
+    }
+
+    /** Who may be a project's Project Manager: the PMO roles (admin / project manager). */
+    public const MANAGER_ROLES = [User::ROLE_ADMIN, User::ROLE_PROJECT_MANAGER];
 
     public function projectManager()
     {
@@ -106,6 +148,12 @@ class Project extends Model
         return $this->belongsToMany(BoardLabel::class);
     }
 
+    /** People in charge (on top of the departments that hold the work) - set on the Planning page. */
+    public function assignees()
+    {
+        return $this->belongsToMany(User::class);
+    }
+
     public function jobType()
     {
         return $this->belongsTo(JobType::class);
@@ -114,6 +162,12 @@ class Project extends Model
     public function projectTasks()
     {
         return $this->hasMany(ProjectTask::class)->orderBy('sequence');
+    }
+
+    /** Only the projects this person may see (App\Services\WorkScope - the same rule as opening one). */
+    public function scopeVisibleTo($query, User $user)
+    {
+        return \App\Services\WorkScope::visibleProjects($query, $user);
     }
 
     public function cabinets()
@@ -243,6 +297,9 @@ class Project extends Model
         return [
             'project_name' => 'ชื่อโครงการ',
             'customer_name' => 'ลูกค้า',
+            'customer_phone' => 'เบอร์ติดต่อ',
+            'contract_value' => 'มูลค่างาน',
+            'margin' => 'Margin',
             'status' => 'สถานะ',
             'priority' => 'ความสำคัญ',
             'start_date' => 'วันเริ่ม',

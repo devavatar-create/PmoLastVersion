@@ -47,6 +47,13 @@ class FieldController extends Controller
         return redirect()->route('settings.fields.index', ['department' => $department])->with('success', 'ลบฟิลด์แล้ว');
     }
 
+    public function toggleChip(DepartmentField $field)
+    {
+        $field->update(['show_on_chip' => ! $field->show_on_chip]);
+
+        return back();
+    }
+
     /** One option per line, so a whole list can be pasted at once. */
     public function storeOption(Request $request, DepartmentField $field)
     {

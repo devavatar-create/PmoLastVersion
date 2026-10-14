@@ -1,6 +1,9 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="text-lg font-semibold text-slate-900">Edit Project — {{ $project->project_no }}</h2>
+        <div class="flex min-w-0 items-center gap-2">
+            <x-back-link :href="route('projects.show', $project)" :label="$project->project_no" />
+            <h2 class="text-lg font-semibold text-slate-900">Edit Project — {{ $project->project_no }}</h2>
+        </div>
     </x-slot>
 
     <div class="max-w-4xl mx-auto">

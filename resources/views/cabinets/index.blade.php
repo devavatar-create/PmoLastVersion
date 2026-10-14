@@ -40,7 +40,7 @@
                                 </td>
                                 <td class="px-5 py-3 text-slate-600">{{ $cabinet->project->project_no }}</td>
                                 <td class="px-5 py-3 text-slate-600 whitespace-nowrap">
-                                    {{ optional($cabinet->due_date)->format('d/m/Y') ?? '-' }}
+                                    {{ optional($cabinet->due_date)->thaiDate() ?? '-' }}
                                     @if ($cabinet->due_date && $cabinet->status !== \App\Models\Cabinet::STATUS_COMPLETED)
                                         @php $days = (int) today()->diffInDays($cabinet->due_date, false); @endphp
                                         <p class="mt-0.5">
@@ -55,7 +55,7 @@
                                             </span>
                                         </p>
                                         @if ($cabinet->expected_completion_date)
-                                            <p class="mt-0.5 text-xs {{ $cabinet->expected_completion_date->gt($cabinet->due_date) ? 'text-red-600' : 'text-slate-400' }}">คาดเสร็จ {{ $cabinet->expected_completion_date->format('d/m/Y') }}</p>
+                                            <p class="mt-0.5 text-xs {{ $cabinet->expected_completion_date->gt($cabinet->due_date) ? 'text-red-600' : 'text-slate-400' }}">คาดเสร็จ {{ $cabinet->expected_completion_date->thaiDate() }}</p>
                                         @endif
                                     @endif
                                 </td>

@@ -9,7 +9,7 @@
     live in this browser's localStorage only; everything shown is server-scoped to the viewer's department.
 --}}
 <div x-data="statusReport(@js(['url' => route('status-report.show'), 'ackUrl' => route('status-report.acknowledge'), 'listUrl' => route('planning.board')]))"
-     x-init="init()" @open-status-report.window="openReport()" @keydown.escape.window="close()">
+     x-init="init()" @open-status-report.window="openReport()" @pmo-urgent.window="showAlerts()" @keydown.escape.window="close()">
     <template x-if="open">
         <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" :aria-label="step === 'alerts' ? 'แจ้งเตือนเร่งด่วน' : 'รายงานสถานะงาน'">
             <div class="absolute inset-0 bg-slate-900/40" @click="close()"></div>
@@ -112,6 +112,11 @@
                     const due = this.pref === 'always' || (this.pref === 'daily' && get('statusReport.lastShown', '') !== this.data.date);
                     if (due && this.data.totals.pending > 0) { this.markShown(); this.step = 'report'; this.open = true; }
                 } catch (e) { /* the popup is a convenience - never break the page over it */ }
+            },
+
+            // the bell saw a new urgent notice while the page was open
+            async showAlerts() {
+                try { await this.load(); if (this.data.alerts.length > 0) { this.step = 'alerts'; this.open = true; } } catch (e) { /* ignore */ }
             },
 
             async openReport() {

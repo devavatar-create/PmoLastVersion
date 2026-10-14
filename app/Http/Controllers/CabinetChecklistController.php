@@ -219,7 +219,7 @@ class CabinetChecklistController extends Controller
                     'id' => $checklist->id,
                     'is_completed' => $checklist->is_completed,
                     'completed_by_name' => $checklist->completedBy?->name,
-                    'completed_at_formatted' => $checklist->completed_at?->format('d/m/Y H:i'),
+                    'completed_at_formatted' => $checklist->completed_at?->thaiDateTime(),
                 ],
                 'subtask' => [
                     'id' => $subtask->id,

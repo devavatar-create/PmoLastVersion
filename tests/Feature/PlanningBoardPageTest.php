@@ -61,12 +61,15 @@ class PlanningBoardPageTest extends TestCase
         foreach (['งานที่ต้องเสร็จ', 'ไทม์ไลน์', 'แดชบอร์ด', 'ส่งต่อแผนก', 'Activity', 'ลบโครงการ'] as $needle) {
             $this->assertStringContainsString($needle, $html, "missing: $needle");
         }
-        $this->assertStringContainsString("Alpine.data('planningBoard'", $html);
+        $this->assertStringContainsString("Alpine.data('planningBoard'", file_get_contents(resource_path('js/planning-board.js')), 'the component lives in the bundle');
+        $this->assertStringContainsString('registerPlanningBoard()', file_get_contents(resource_path('js/app.js')));
         $this->assertMatchesRegularExpression('#planning.{1,8}sync#', $html, 'edits go through the existing operations endpoint (@js escapes the slash)');
         $this->assertStringNotContainsString('__PMO__', $html, 'no embedded SPA / config script');
         $this->assertNotNull($res->headers->get('Server-Timing'));
-        // the point: this is the page's own templates (~90 KB of Blade + the app layout), NOT the 600 KB single-file SPA
-        $this->assertLessThan(200 * 1024, strlen($html));
+        // the page's own templates only (~90 KB of Blade + the app layout), not the 600 KB single-file SPA, and not its script:
+        // the Alpine component moved into the cached bundle (resources/js/planning-board.js), so the page dropped from ~290 KB.
+        // gzip (GzipResponse) sends a small fraction of it.
+        $this->assertLessThan(240 * 1024, strlen($html));
     }
 
     public function test_pmo_roles_can_edit_and_department_users_start_on_their_own_department(): void
@@ -76,7 +79,7 @@ class PlanningBoardPageTest extends TestCase
         $this->assertSame('', $pm['myDept'], 'PMO roles see every department');
 
         $member = $this->actingAs($this->user($this->busbar))->get(route('planning.board'))->assertOk()->viewData('config');
-        $this->assertTrue($member['canEdit'], 'like the Project screens, anyone who sees a project may edit it');
+        $this->assertFalse($member['canEdit'], 'project data and dates: Admin / PM only');
         $this->assertFalse($member['isPmo']);
         $this->assertTrue($pm['isPmo']);
         $this->assertSame('d_'.$this->busbar->id, $member['myDept']);

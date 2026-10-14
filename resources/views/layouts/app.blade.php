@@ -82,40 +82,38 @@
                             <button type="button" @click="$dispatch('open-status-report')" class="text-slate-500 hover:text-slate-700" title="รายงานสถานะงาน" aria-label="รายงานสถานะงาน">
                                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
                             </button>
-                            @php
-                                $unreadCount = auth()->user()->unreadNotifications()->count();
-                                $latestNotices = auth()->user()->notifications()->limit(8)->get();
-                            @endphp
+                            {{-- the bell: drawn from the server's data, then asks again every 30 s (and when the tab comes back), so new
+                                 notices show without a reload; a new urgent one (tag / alert / new work / overdue) opens the alert window --}}
+                            <div x-data="pmoBell(@js(['feed' => \App\Http\Controllers\NotificationController::feedFor(auth()->user()), 'url' => route('notifications.feed'), 'read' => route('notifications.read', ['id' => '__ID__'])]))" x-init="init()">
                             <x-dropdown align="right" width="w-80 max-w-[calc(100vw-2rem)]">
                                 <x-slot name="trigger">
                                     <button type="button" class="relative text-slate-500 hover:text-slate-700" aria-label="การแจ้งเตือน">
                                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0" /></svg>
-                                        @if ($unreadCount > 0)
-                                            <span class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-4 text-center">{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span>
-                                        @endif
+                                        <span x-show="feed.unread > 0" x-cloak class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-4 text-center" x-text="feed.unread > 99 ? '99+' : feed.unread"></span>
                                     </button>
                                 </x-slot>
                                 <x-slot name="content">
                                     <div class="max-h-96 overflow-y-auto divide-y divide-slate-100">
-                                        @forelse ($latestNotices as $notice)
-                                            <form method="POST" action="{{ route('notifications.read', $notice->id) }}">
+                                        <template x-for="n in feed.items" :key="n.id">
+                                            <form method="POST" :action="cfg.read.replace('__ID__', n.id)">
                                                 @csrf
                                                 <button class="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-start gap-2">
-                                                    <span class="mt-1.5 w-2 h-2 rounded-full shrink-0 {{ $notice->read_at ? 'bg-transparent' : 'bg-blue-500' }}"></span>
+                                                    <span class="mt-1.5 w-2 h-2 rounded-full shrink-0" :class="n.read ? 'bg-transparent' : 'bg-blue-500'"></span>
                                                     <span class="min-w-0">
-                                                        <span class="block text-sm {{ $notice->read_at ? 'text-slate-600' : 'font-semibold text-slate-900' }}">{{ $notice->data['title'] }}</span>
-                                                        <span class="block text-xs text-slate-500 truncate">{{ $notice->data['body'] }}</span>
-                                                        <span class="block text-[11px] text-slate-400">{{ $notice->created_at->format('d/m/Y H:i') }}</span>
+                                                        <span class="block text-sm" :class="n.read ? 'text-slate-600' : 'font-semibold text-slate-900'" x-text="n.title"></span>
+                                                        <span class="block text-xs text-slate-600 line-clamp-2" x-text="n.body"></span>
+                                                        <span x-show="n.latest" class="block text-[11px] text-slate-400 truncate" x-text="'ล่าสุด: ' + n.latest"></span>
+                                                        <span class="block text-[11px] text-slate-400" x-text="n.at"></span>
                                                     </span>
                                                 </button>
                                             </form>
-                                        @empty
-                                            <p class="px-4 py-6 text-center text-sm text-slate-400">ยังไม่มีการแจ้งเตือน</p>
-                                        @endforelse
+                                        </template>
+                                        <p x-show="!feed.items.length" class="px-4 py-6 text-center text-sm text-slate-400">ยังไม่มีการแจ้งเตือน</p>
                                     </div>
                                     <a href="{{ route('notifications.index') }}" class="block px-4 py-2 text-center text-xs font-medium text-blue-600 hover:bg-slate-50 border-t border-slate-100">ดูทั้งหมด</a>
                                 </x-slot>
                             </x-dropdown>
+                            </div>
 
                             <x-dropdown align="right" width="48">
                                 <x-slot name="trigger">
@@ -161,6 +159,30 @@
             </div>
         </div>
         <x-status-report />
+        <script>
+            // the top bar's bell (layouts/app): polls notifications.feed; a new urgent notice opens the status-report alert window
+            function pmoBell(cfg) {
+                return {
+                    cfg, feed: cfg.feed, seen: new Set(cfg.feed.urgent),
+                    init() {
+                        const poll = () => { if (!document.hidden) this.refresh(); };
+                        setInterval(poll, 30000);
+                        document.addEventListener('visibilitychange', poll);
+                    },
+                    async refresh() {
+                        try {
+                            const res = await fetch(cfg.url, { headers: { 'Accept': 'application/json' } });
+                            if (!res.ok) return;
+                            const feed = await res.json();
+                            const fresh = feed.urgent.filter((id) => !this.seen.has(id));
+                            feed.urgent.forEach((id) => this.seen.add(id));
+                            this.feed = feed;
+                            if (fresh.length) window.dispatchEvent(new CustomEvent('pmo-urgent'));
+                        } catch (e) { /* offline: keep what we have */ }
+                    },
+                };
+            }
+        </script>
         @stack('scripts')
     </body>
 </html>

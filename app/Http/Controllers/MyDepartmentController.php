@@ -46,7 +46,7 @@ class MyDepartmentController extends Controller
             // Project filter - available to everyone, not just PMO:
             // it only narrows further within whatever department scope already
             // applies, same as Status, so it can't leak another department's data.
-            'projects' => Project::orderBy('project_no')->get(['id', 'project_no', 'project_name']),
+            'projects' => Project::visibleTo($user)->orderBy('project_no')->get(['id', 'project_no', 'project_name']),
         ]);
     }
 
@@ -109,6 +109,7 @@ class MyDepartmentController extends Controller
         }
 
         $notified = $alertTo ? $notifications->projectAlert($project, $alertTo, $user, $data['note']) : 0;
+        $notifications->commented($project, $user, $log, $alertTo ? \App\Models\User::where('department_id', $alertTo->id)->pluck('id')->all() : []);
 
         return response()->json([
             'activity' => $this->modal->activityItem($log->load('user', 'attachments')),
@@ -149,8 +150,8 @@ class MyDepartmentController extends Controller
             $i['task_name'],
             $i['name'],
             $i['owner_name'] ?? '-',
-            $i['start_date'] ? date('d/m/Y', strtotime($i['start_date'])) : '-',
-            $i['due_date'] ? date('d/m/Y', strtotime($i['due_date'])) : '-',
+            $i['start_date'] ? \Illuminate\Support\Carbon::parse($i['start_date'])->thaiDate() : '-',
+            $i['due_date'] ? \Illuminate\Support\Carbon::parse($i['due_date'])->thaiDate() : '-',
             $i['assignment_status_label'],
             $i['is_overdue'] ? 'เกินกำหนด '.abs($i['days_remaining']).' วัน' : '',
             $i['progress'].'%',
@@ -192,7 +193,7 @@ class MyDepartmentController extends Controller
                     'name' => $c->name,
                     'is_completed' => $c->is_completed,
                     'completed_by_name' => $c->completedBy?->name,
-                    'completed_at' => $c->completed_at?->format('d/m/Y H:i'),
+                    'completed_at' => $c->completed_at?->thaiDateTime(),
                     'toggle_url' => route('checklists.toggle', $c),
                 ])->values(),
             ],

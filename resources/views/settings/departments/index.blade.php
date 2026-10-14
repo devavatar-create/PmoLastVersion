@@ -1,9 +1,9 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="text-lg font-semibold text-slate-900">Departments</h2>
+        <h2 class="text-lg font-semibold text-slate-900">ตั้งค่า</h2>
     </x-slot>
 
-    <div class="max-w-3xl mx-auto space-y-4">
+    <div class="max-w-none mx-auto space-y-4">
         <x-settings-nav />
         <x-card title="Departments">
             <x-slot name="actions">
@@ -18,7 +18,11 @@
                             @if ($department->description)
                                 <p class="text-xs text-slate-500">{{ $department->description }}</p>
                             @endif
-                            <p class="text-xs text-slate-400 mt-0.5">{{ $department->users_count }} ผู้ใช้งาน</p>
+                            @if ($department->users_count)
+                                <p class="text-xs text-slate-400 mt-0.5">{{ $department->users_count }} ผู้ใช้งาน</p>
+                            @else
+                                <p class="mt-0.5 inline-block rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800" title="งานและแจ้งเตือนที่ส่งมาแผนกนี้จะไม่มีใครเห็น">ยังไม่มีผู้ใช้ — ไม่มีใครได้รับงาน/แจ้งเตือน</p>
+                            @endif
                         </div>
                         <div class="flex items-center gap-3">
                             <button type="button" x-data @click="$dispatch('open-modal', 'edit-department-{{ $department->id }}')" class="text-xs font-medium text-blue-600 hover:underline">Edit</button>
@@ -62,7 +66,7 @@
                 </div>
                 <label class="flex items-start gap-2 text-sm text-slate-600">
                     <input type="checkbox" name="sees_all" value="1"  class="mt-0.5 rounded border-slate-300 text-blue-600">
-                    <span>เห็นงานของทุกแผนก (อ่านอย่างเดียว เหมือน PM มองเห็น แต่ไม่ได้สิทธิ์จ่ายงาน/ลบ)</span>
+                    <span>เห็นงานของทุกแผนก (อ่านอย่างเดียว เหมือน PM มองเห็น แต่ไม่ได้สิทธิ์จ่ายงาน/ลบ) — ช่องเดียวกับ “เห็นทุกโครงการ” ใน <a href="{{ route('settings.permissions.edit') }}" class="text-blue-600 hover:underline">สิทธิ์การใช้งาน</a></span>
                 </label>
 
             </div>
@@ -103,7 +107,7 @@
                 </div>
                 <label class="flex items-start gap-2 text-sm text-slate-600">
                     <input type="checkbox" name="sees_all" value="1" @checked($department->sees_all) class="mt-0.5 rounded border-slate-300 text-blue-600">
-                    <span>เห็นงานของทุกแผนก (อ่านอย่างเดียว เหมือน PM มองเห็น แต่ไม่ได้สิทธิ์จ่ายงาน/ลบ)</span>
+                    <span>เห็นงานของทุกแผนก (อ่านอย่างเดียว เหมือน PM มองเห็น แต่ไม่ได้สิทธิ์จ่ายงาน/ลบ) — ช่องเดียวกับ “เห็นทุกโครงการ” ใน <a href="{{ route('settings.permissions.edit') }}" class="text-blue-600 hover:underline">สิทธิ์การใช้งาน</a></span>
                 </label>
 
                     <label class="flex items-center gap-2 text-sm text-slate-600">

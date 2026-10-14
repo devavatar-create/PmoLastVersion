@@ -27,7 +27,7 @@ class SettingsController extends Controller
     public function updateNotifications(Request $request)
     {
         // an unchecked box is simply absent from the form, so every switch is read as boolean()
-        $data = collect(['enabled', 'only_my_department', 'progress', 'completed', 'reminders'])
+        $data = collect(['enabled', 'only_my_department', 'progress', 'completed', 'reminders', 'comments', 'due_changes'])
             ->mapWithKeys(fn ($k) => [$k => $request->boolean($k)])->all();
 
         NotificationPreference::updateOrCreate(['user_id' => $request->user()->id], $data);
@@ -48,9 +48,13 @@ class SettingsController extends Controller
         $data = $request->validate([
             'automation_locked_statuses' => ['nullable', 'array'],
             'automation_locked_statuses.*' => ['string', 'in:'.implode(',', array_keys(Project::$statuses))],
+            'waiting_reminder_days' => ['nullable', 'integer', 'min:0', 'max:30'],
         ]);
 
-        foreach (['cross_mention', 'block_done_needs_checklist', 'block_project_done_needs_work'] as $key) {
+        if (isset($data['waiting_reminder_days'])) {
+            AppSetting::put('waiting_reminder_days', (int) $data['waiting_reminder_days']);
+        }
+        foreach (['cross_mention', 'block_done_needs_checklist', 'block_project_done_needs_work', 'pmo_acts_for_departments'] as $key) {
             AppSetting::put($key, $request->boolean($key));
         }
         AppSetting::put('automation_locked_statuses', array_values($data['automation_locked_statuses'] ?? []));

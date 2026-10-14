@@ -10,8 +10,8 @@ class CabinetTemplateController extends Controller
     public function index()
     {
         $templates = CabinetTemplate::withCount('cabinets')
-            ->with('taskTemplates.subtaskTemplates.checklistTemplates')
-            ->orderByDesc('is_default')
+            ->with(['taskTemplates.subtaskTemplates' => fn ($q) => $q->with('department:id,name')->withCount('checklistTemplates')])
+            ->orderByDesc('is_default')->orderByDesc('is_active')->orderBy('name')
             ->get();
 
         return view('cabinet-templates.index', ['templates' => $templates]);
@@ -72,14 +72,12 @@ class CabinetTemplateController extends Controller
         return redirect()->route('cabinet-templates.show', $cabinetTemplate)->with('success', 'บันทึกเทมเพลตเรียบร้อยแล้ว');
     }
 
-    public function destroy(CabinetTemplate $cabinetTemplate)
+    /** The cabinets made from it keep their own tasks and checklists (they are copies) - see TemplateTools::deleteTemplate(). */
+    public function destroy(CabinetTemplate $cabinetTemplate, \App\Services\TemplateTools $tools)
     {
-        if ($cabinetTemplate->cabinets()->exists()) {
-            return back()->with('error', 'ไม่สามารถลบเทมเพลตที่ถูกใช้งานโดยตู้ไฟฟ้าอยู่ได้');
-        }
+        $name = $cabinetTemplate->name;
+        $cabinets = $tools->deleteTemplate($cabinetTemplate);
 
-        $cabinetTemplate->delete();
-
-        return redirect()->route('cabinet-templates.index')->with('success', 'ลบเทมเพลตเรียบร้อยแล้ว');
+        return redirect()->route('cabinet-templates.index')->with('success', "ลบเทมเพลต \"{$name}\" แล้ว".($cabinets ? " — ตู้ {$cabinets} ตู้ที่สร้างจากเทมเพลตนี้ยังอยู่ครบเหมือนเดิม" : ''));
     }
 }

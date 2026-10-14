@@ -38,7 +38,7 @@ class CabinetIndexOrderTest extends TestCase
         $response->assertSee('ครบกำหนดวันนี้');
         $response->assertSee('เหลือ 3 วัน');
         $response->assertSee('เหลือ 68 วัน');
-        $response->assertSee('คาดเสร็จ 30/09/2026');
+        $response->assertSee('คาดเสร็จ 30/09/2569');
         $this->assertSame(4, substr_count($response->getContent(), 'inline-block text-xs font-medium px-1.5'));
     }
 }

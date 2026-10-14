@@ -50,8 +50,8 @@ class ProjectController extends Controller
             Project::$priorities[$p->priority] ?? $p->priority,
             $p->projectManager?->name,
             $p->jobType?->name,
-            $p->start_date?->format('d/m/Y'),
-            $p->due_date?->format('d/m/Y'),
+            $p->start_date?->thaiDate(),
+            $p->due_date?->thaiDate(),
             $p->cabinets_count,
             $p->production_progress.'%',
             ['overdue' => 'Delayed', 'at_risk' => 'At Risk'][$p->risk_level] ?? 'On Track',
@@ -66,7 +66,8 @@ class ProjectController extends Controller
 
     private function filteredProjects(Request $request)
     {
-        $query = Project::withAvg('cabinets', 'progress')
+        $query = Project::visibleTo($request->user())   // the list and its CSV: only the projects this person may see
+            ->withAvg('cabinets', 'progress')
             ->withAvg('projectTasks', 'progress')
             ->withCount('cabinets');
 
@@ -88,7 +89,7 @@ class ProjectController extends Controller
     public function create()
     {
         return view('projects.create', [
-            'users' => User::orderBy('name')->get(),
+            'users' => $this->managers(),
             'statuses' => Project::$statuses,
             'priorities' => Project::$priorities,
             'jobTypes' => JobType::where('is_active', true)->orderBy('name')->get(),
@@ -111,7 +112,6 @@ class ProjectController extends Controller
             'projectTasks.owner',
             'cabinets.tasks',
             'projectManager', 'jobType',
-            'attachments.uploadedBy',
         ]);
 
         $project->cabinets->each(
@@ -144,7 +144,7 @@ class ProjectController extends Controller
     {
         return view('projects.edit', [
             'project' => $project,
-            'users' => User::orderBy('name')->get(),
+            'users' => $this->managers($project),
             'statuses' => Project::$statuses,
             'priorities' => Project::$priorities,
             'jobTypes' => JobType::where('is_active', true)->orderBy('name')->get(),
@@ -185,6 +185,7 @@ class ProjectController extends Controller
         foreach ($request->file('attachments', []) as $file) {
             $uploader->store($log, $file, auth()->id());
         }
+        app(\App\Services\NotificationService::class)->commented($project, $request->user(), $log);   // the people following the project hear it
 
         // Comment tab is client-side (Alpine) state, not reflected in the URL -
         // redirect straight back to it (rather than back()/Referer, which would
@@ -215,23 +216,55 @@ class ProjectController extends Controller
 
     private function validateData(Request $request, ?Project $project = null): array
     {
-        return $request->validate([
+        // amounts as typed ("1,250,000") -> plain numbers
+        $request->merge(collect(['contract_value', 'margin'])->filter(fn ($k) => $request->has($k))->mapWithKeys(fn ($k) => [$k => Project::cleanAmount($request->input($k))])->all());
+
+        $data = $request->validate([
             'project_no' => ['required', 'string', 'max:50', 'unique:projects,project_no,'.($project?->id ?? 'NULL').',id,deleted_at,NULL'],
             'project_name' => ['required', 'string', 'max:255'],
             'customer_name' => ['required', 'string', 'max:255'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
+            'contract_value' => ['nullable', 'numeric', 'min:0', 'max:9999999999999'],
+            'margin' => ['nullable', 'numeric', 'max:9999999999999'],
             'po_no' => ['nullable', 'string', 'max:100'],
             'sales_order_no' => ['nullable', 'string', 'max:100'],
             'project_owner' => ['nullable', 'string', 'max:255'],
             'sales_person' => ['nullable', 'string', 'max:255'],
-            'project_manager_id' => ['nullable', 'exists:users,id'],
+            // Admin / PM only (a manager already on the project before this rule may stay when it is edited)
+            'project_manager_id' => ['nullable', 'exists:users,id', function (string $attr, mixed $value, \Closure $fail) use ($project) {
+                if ($value && (int) $value !== $project?->project_manager_id && ! User::whereKey($value)->whereIn('role', Project::MANAGER_ROLES)->exists()) {
+                    $fail('ผู้จัดการโครงการต้องเป็น Admin หรือ Project Manager');
+                }
+            }],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'description' => ['nullable', 'string'],
             'payment_terms' => ['nullable', 'string', 'max:255'],
             'job_type_id' => ['nullable', 'exists:job_types,id'],
             'board_id' => ['nullable', 'exists:boards,id'],
-            'status' => ['required', 'in:'.implode(',', array_keys(Project::$statuses))],
+            // a new project has no status field (it starts as Draft); it is changed on the edit page / Planning
+            'status' => [$project ? 'required' : 'nullable', 'in:'.implode(',', array_keys(Project::$statuses))],
             'priority' => ['required', 'in:'.implode(',', array_keys(Project::$priorities))],
-        ]);
+        ], ['contract_value.numeric' => 'มูลค่างานต้องเป็นตัวเลข', 'margin.numeric' => 'Margin ต้องเป็นตัวเลข']);
+
+        if (! $project) {
+            $data['status'] ??= Project::STATUS_DRAFT;
+        }
+        // what this person may not see, they do not change either (the old values stay) - Settings > สิทธิ์การใช้งาน
+        if (! $request->user()->allows('data.finance')) {
+            unset($data['contract_value'], $data['margin']);
+        }
+        if (! $request->user()->allows('data.contact')) {
+            unset($data['customer_phone']);
+        }
+
+        return $data;
+    }
+
+    /** The people the form offers as Project Manager: Admin / PM, plus whoever already is this project's manager. */
+    private function managers(?Project $project = null)
+    {
+        return User::where(fn ($q) => $q->whereIn('role', Project::MANAGER_ROLES)->where('is_active', true)
+            ->when($project?->project_manager_id, fn ($q, $id) => $q->orWhere('id', $id)))->orderBy('name')->get();
     }
 }

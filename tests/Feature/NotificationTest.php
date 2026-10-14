@@ -55,7 +55,8 @@ class NotificationTest extends TestCase
         app(SubtaskAssignmentService::class)->changeDepartment($this->subtask, $this->wiring->id, $this->pm);
 
         $this->assertSame(1, $this->wirer->notifications()->count());
-        $this->assertStringContainsString('Power Wiring', $this->wirer->notifications->first()->data['body']);
+        $this->assertStringContainsString('งานใหม่ 1 งาน', $this->wirer->notifications->first()->data['body'], 'one notice per project, summarising it');
+        $this->assertStringContainsString('Power Wiring', $this->wirer->notifications->first()->data['latest'], 'and what happened last');
         $this->assertSame(0, $this->otherDept->notifications()->count());
         $this->assertSame(0, $this->pm->notifications()->count());
     }

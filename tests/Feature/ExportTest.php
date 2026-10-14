@@ -66,7 +66,7 @@ class ExportTest extends TestCase
         $body = $this->csv($this->get(route('my-department.export', ['from' => '2026-10-01', 'to' => '2026-10-31', 'department_id' => $this->wiring->id])));
 
         $this->assertStringContainsString('Power Wiring', $body);
-        $this->assertStringContainsString('10/10/2026', $body);
+        $this->assertStringContainsString('10/10/2569', $body);
 
         $member = User::forceCreate(['name' => 'W', 'email' => 'w2@example.com', 'password' => 'secret-pass', 'role' => User::ROLE_MEMBER, 'department_id' => $this->wiring->id, 'is_active' => true]);
         $other = Department::create(['name' => 'Busbar', 'code' => 'BUS']);

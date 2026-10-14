@@ -4,6 +4,11 @@
     </x-slot>
 
     <div class="max-w-3xl mx-auto">
+        <div class="mb-3 flex gap-1 text-sm">
+            <a href="{{ route('notifications.index') }}" class="rounded-lg px-3 py-1.5 font-medium {{ $unreadOnly ? 'text-slate-600 hover:bg-slate-100' : 'bg-slate-800 text-white' }}">ทั้งหมด</a>
+            <a href="{{ route('notifications.index', ['filter' => 'unread']) }}" class="rounded-lg px-3 py-1.5 font-medium {{ $unreadOnly ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100' }}">ยังไม่อ่าน ({{ $unreadCount }})</a>
+            <a href="{{ route('settings.notifications.edit') }}" class="ml-auto rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-100">ตั้งค่าการแจ้งเตือน</a>
+        </div>
         <x-card title="การแจ้งเตือนของฉัน">
             <x-slot name="actions">
                 @if (auth()->user()->unreadNotifications()->exists())
@@ -22,13 +27,16 @@
                             <span class="mt-1.5 w-2 h-2 rounded-full shrink-0 {{ $n->read_at ? 'bg-transparent' : 'bg-blue-500' }}"></span>
                             <span class="min-w-0 flex-1">
                                 <span class="block text-sm {{ $n->read_at ? 'text-slate-600' : 'font-semibold text-slate-900' }}">{{ $n->data['title'] }}</span>
-                                <span class="block text-xs text-slate-500 truncate">{{ $n->data['body'] }}</span>
-                                <span class="block text-[11px] text-slate-400 mt-0.5">{{ $n->created_at->format('d/m/Y H:i') }}</span>
+                                <span class="block text-xs text-slate-600">{{ $n->data['body'] }}</span>
+                                @if (! empty($n->data['latest']))
+                                    <span class="block text-[11px] text-slate-400 truncate">ล่าสุด: {{ $n->data['latest'] }}</span>
+                                @endif
+                                <span class="block text-[11px] text-slate-400 mt-0.5">{{ $n->created_at->thaiDateTime() }}</span>
                             </span>
                         </button>
                     </form>
                 @empty
-                    <p class="px-5 py-6 text-center text-slate-400 text-sm">ยังไม่มีการแจ้งเตือน</p>
+                    <p class="px-5 py-6 text-center text-slate-400 text-sm">{{ $unreadOnly ? 'อ่านครบหมดแล้ว' : 'ยังไม่มีการแจ้งเตือน' }}</p>
                 @endforelse
             </div>
             @if ($notifications->hasPages())

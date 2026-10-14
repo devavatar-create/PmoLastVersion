@@ -1,9 +1,9 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="text-lg font-semibold text-slate-900">Automation / กฎอัตโนมัติ</h2>
+        <h2 class="text-lg font-semibold text-slate-900">ตั้งค่า</h2>
     </x-slot>
 
-    <div class="max-w-3xl mx-auto space-y-6">
+    <div class="max-w-none mx-auto space-y-6">
         <x-settings-nav />
         {{-- ===== Workflow rules ===== --}}
         <x-card title="กฎเลื่อนสถานะงานอัตโนมัติ" subtitle="ทำงานเมื่อมีคนติ๊ก Checklist ของ Sub Task เท่านั้น (ยกเลิกการติ๊กจะไม่ย้อนสถานะกลับ) และผ่านขั้นตอนรับงาน/เริ่มงาน/ปิดงานเดิม ไม่ข้ามสิทธิ์">

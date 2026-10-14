@@ -47,6 +47,7 @@ class Cabinet extends Model
         'weight',
         'remark',
         'sequence',
+        'board_status_id',
     ];
 
     protected function casts(): array
@@ -168,5 +169,11 @@ class Cabinet extends Model
         }
 
         return $this->activityDefaultFormatValue($value);
+    }
+
+    /** A Planning status picked by hand for this cabinet (null = worked out from its departments' progress). */
+    public function boardStatus()
+    {
+        return $this->belongsTo(BoardStatus::class);
     }
 }

@@ -1,4 +1,4 @@
-@props(['url', 'exportUrl', 'subtitle' => 'ประวัติการเปลี่ยนแปลงทั้งหมด จัดกลุ่มตามโครงสร้างงาน เรียงล่าสุดก่อน'])
+@props(['url', 'exportUrl' => null, 'subtitle' => 'ประวัติการเปลี่ยนแปลงทั้งหมด จัดกลุ่มตามโครงสร้างงาน เรียงล่าสุดก่อน'])
 
 {{-- Activity Log tab as a Cabinet > Task > Sub Task > Checklist > Activity tree.
      Pure presentation over the existing activity_logs rows: the server groups them
@@ -50,7 +50,7 @@
                 <option value="asc">เก่าสุดก่อน</option>
             </select>
             <span class="ml-auto flex items-center gap-3 text-xs">
-                <button type="button" @click="exportCsv()" class="text-blue-600 hover:underline">Export CSV</button>
+                <button type="button" x-show="exportUrl" @click="exportCsv()" class="text-blue-600 hover:underline">Export CSV</button>
                 <span class="text-slate-300">|</span>
                 <button type="button" @click="expandAll()" class="text-blue-600 hover:underline">ขยายทั้งหมด</button>
                 <span class="text-slate-300">|</span>

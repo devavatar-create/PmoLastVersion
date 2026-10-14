@@ -25,6 +25,7 @@ class User extends Authenticatable
         'role',
         'department_id',
         'position',
+        'avatar_path',
         'is_active',
     ];
 
@@ -37,6 +38,12 @@ class User extends Authenticatable
     const ROLE_PRODUCTION = 'production';
 
     const ROLE_MEMBER = 'member';
+
+    /** The profile picture, or null (the page then draws the initial on a colour). */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        return $this->avatar_path ? asset('uploads/avatars/'.$this->avatar_path) : null;
+    }
 
     public function notificationPreference()
     {
@@ -60,13 +67,19 @@ class User extends Authenticatable
      */
     public function canViewOtherDepartments(): bool
     {
-        return in_array($this->role, [self::ROLE_ADMIN, self::ROLE_PROJECT_MANAGER], true);
+        return $this->allows('edit.manage');   // the PM-level power (Settings > สิทธิ์การใช้งาน); Admin always
+    }
+
+    /** One permission of Settings > สิทธิ์การใช้งาน (App\Support\Access) - Admin may everything. */
+    public function allows(string $permission): bool
+    {
+        return \App\Support\Access::allows($this, $permission);
     }
 
     /** May SEE every project (read only): a PMO role, or a member of a department an admin marked "sees everything". */
     public function canSeeAllWork(): bool
     {
-        return $this->canViewOtherDepartments() || (bool) $this->department?->sees_all;
+        return $this->canViewOtherDepartments() || $this->allows('scope.all_projects') || (bool) $this->department?->sees_all;
     }
 
     public function isAdmin(): bool
@@ -85,12 +98,10 @@ class User extends Authenticatable
         return $this->canViewOtherDepartments();
     }
 
-    /**
-     * Restoring from the trash (Projects/Cabinets) - the same PMO-level roles.
-     */
+    /** The trash page, restoring from it (Settings > สิทธิ์การใช้งาน: edit.trash). */
     public function canManageTrash(): bool
     {
-        return $this->canViewOtherDepartments();
+        return $this->allows('edit.trash');
     }
 
     /**

@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header"><h2 class="text-lg font-semibold text-slate-900">ตั้งค่า</h2></x-slot>
-    <div class="max-w-3xl mx-auto space-y-4">
+    <div class="max-w-none mx-auto space-y-4">
         <x-settings-nav />
         <x-card title="บอร์ด" subtitle="ปฏิทิน Planning แยกตามกลุ่มงาน เช่น Service — บอร์ดหลัก (PMO) มีอยู่เสมอ ย้ายโครงการไปบอร์ดอื่นได้ในหน้าต่างโครงการบน Planning (Admin/PM)">
             <div class="space-y-2">

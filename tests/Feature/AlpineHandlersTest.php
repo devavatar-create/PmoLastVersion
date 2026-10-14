@@ -81,7 +81,7 @@ class AlpineHandlersTest extends TestCase
     public static function pages(): array
     {
         return [
-            'planning board' => ['planning', 'views/planning/partials/_script.blade.php'],
+            'planning board' => ['planning', 'js/planning-board.js'],
             'my department' => ['my-department', 'views/my-department/partials/_script.blade.php'],
         ];
     }

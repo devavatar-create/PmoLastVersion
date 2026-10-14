@@ -293,7 +293,7 @@ class ActivityTreeBuilder
             $node['count'] = count($node['activities']) + array_sum(array_column($node['children'], 'count'));
             $node['latest'] = max(array_merge(array_column($node['activities'], 'ts'), array_column($node['children'], 'latest_ts')) ?: [0]);
             $node['latest_ts'] = $node['latest'];
-            $node['latest'] = $node['latest'] ? date('d/m/Y H:i', $node['latest']) : null;
+            $node['latest'] = $node['latest'] ? \Illuminate\Support\Carbon::createFromTimestamp($node['latest'], config('app.timezone'))->thaiDateTime() : null;
 
             $out[] = $node;
         }
@@ -334,21 +334,22 @@ class ActivityTreeBuilder
         return [
             'key' => $key, 'type' => $type, 'label' => $label,
             'children' => $children ?? [], 'activities' => $activities,
-            'count' => $count, 'latest_ts' => $latest, 'latest' => $latest ? date('d/m/Y H:i', $latest) : null,
+            'count' => $count, 'latest_ts' => $latest, 'latest' => $latest ? \Illuminate\Support\Carbon::createFromTimestamp($latest, config('app.timezone'))->thaiDateTime() : null,
         ];
     }
 
     private function activity(ActivityLog $log): array
     {
-        $changes = collect($log->changes ?? [])
+        $changes = collect($log->changesFor(auth()->user()))   // money / phone values as ••• for whom Settings > สิทธิ์การใช้งาน hides them
             ->map(fn ($c) => ['label' => $c['label'] ?? '', 'old' => $c['old'] ?? '-', 'new' => $c['new'] ?? '-'])
             ->values()->all();
+        $description = $log->descriptionFor(auth()->user());
 
         // The tree already says WHICH entity; only keep the sentence where it
         // carries information nothing else shows (counts, file names, deletions).
         $known = isset(self::ACTION_LABELS[$log->action]);
         $detail = (! $changes && (! $known || in_array($log->action, ['deleted', 'checklists_copied', 'attachment_uploaded', 'attachment_deleted', 'template_applied', 'copied_from_cabinet', 'accepted', 'started', 'completed'], true)))
-            ? $log->description : null;
+            ? $description : null;
 
         $name = $log->user?->name;
 
@@ -357,13 +358,13 @@ class ActivityTreeBuilder
             'action' => $log->action,
             'icon' => self::ACTION_ICONS[$log->action] ?? 'dot',
             'title' => self::ACTION_LABELS[$log->action] ?? $log->action,
-            'at' => $log->created_at->format('d/m/Y H:i'),
+            'at' => $log->created_at->thaiDateTime(),
             'ts' => $log->created_at->getTimestamp(),
             'actor' => $name ?? 'Unknown User',
             'initial' => $name ? mb_strtoupper(mb_substr($name, 0, 1)) : '?',
             'changes' => $changes,
             'detail' => $detail,
-            'haystack' => mb_strtolower($log->description.' '.($name ?? '').' '.($log->action)),
+            'haystack' => mb_strtolower($description.' '.($name ?? '').' '.($log->action)),
         ];
     }
 

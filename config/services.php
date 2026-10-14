@@ -2,6 +2,13 @@
 
 return [
 
+    // Web push (notifications when Planning is closed). Empty keys = push is off; the in-app bell still works.
+    'webpush' => [
+        'public_key' => env('WEBPUSH_PUBLIC_KEY'),
+        'private_key' => env('WEBPUSH_PRIVATE_KEY'),
+        'subject' => env('WEBPUSH_SUBJECT', 'mailto:admin@example.com'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

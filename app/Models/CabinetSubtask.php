@@ -66,6 +66,7 @@ class CabinetSubtask extends Model
         'department_id',
         'assignment_status',
         'accepted_by',
+        'assigned_at',
         'accepted_at',
         'started_by',
         'started_at',
@@ -96,6 +97,7 @@ class CabinetSubtask extends Model
             'start_date' => 'date',
             'due_date' => 'date',
             'completed_date' => 'date',
+            'assigned_at' => 'datetime',
             'accepted_at' => 'datetime',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
@@ -189,6 +191,7 @@ class CabinetSubtask extends Model
         return [
             'department_id' => $departmentId,
             'assignment_status' => $departmentId ? self::ASSIGNMENT_ASSIGNED : self::ASSIGNMENT_UNASSIGNED,
+            'assigned_at' => $departmentId ? now() : null,
             'accepted_by' => null,
             'accepted_at' => null,
             'started_by' => null,

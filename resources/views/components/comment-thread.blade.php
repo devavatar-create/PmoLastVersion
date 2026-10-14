@@ -59,7 +59,7 @@
                     @endif
 
                     <p class="text-xs text-slate-400 mt-0.5">
-                        {{ $comment->created_at->format('d/m/Y H:i') }}
+                        {{ $comment->created_at->thaiDateTime() }}
                         @if ($comment->updated_at->ne($comment->created_at))
                             <span class="italic">(แก้ไขแล้ว)</span>
                         @endif

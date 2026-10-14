@@ -1,9 +1,12 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="text-lg font-semibold text-slate-900">Edit Template — {{ $template->name }}</h2>
+        <div class="flex min-w-0 items-center gap-2">
+            <x-back-link :href="route('cabinet-templates.show', $template)" :label="$template->name" />
+            <h2 class="text-lg font-semibold text-slate-900">Edit Template — {{ $template->name }}</h2>
+        </div>
     </x-slot>
 
-    <div class="max-w-2xl mx-auto">
+    <div class="max-w-none mx-auto">
         <x-settings-nav />
         <x-card>
             <form method="POST" action="{{ route('cabinet-templates.update', $template) }}">

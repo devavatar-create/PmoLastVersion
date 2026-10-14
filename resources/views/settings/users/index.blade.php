@@ -1,9 +1,9 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="text-lg font-semibold text-slate-900">Users</h2>
+        <h2 class="text-lg font-semibold text-slate-900">ตั้งค่า</h2>
     </x-slot>
 
-    <div class="max-w-5xl mx-auto space-y-4">
+    <div class="max-w-none mx-auto space-y-4">
         <x-settings-nav />
         <div class="flex justify-end">
             <a href="{{ route('settings.users.create') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">

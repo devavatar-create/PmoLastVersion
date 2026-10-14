@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header"><h2 class="text-lg font-semibold text-slate-900">ตั้งค่า</h2></x-slot>
-    <div class="max-w-3xl mx-auto space-y-4">
+    <div class="max-w-none mx-auto space-y-4">
         <x-settings-nav />
         <x-card title="แท็ก (ป้ายกำกับ)" subtitle="ติดแท็กให้โครงการได้ในหน้าต่างโครงการบน Planning ทุกคนที่แก้โครงการได้ติด/ถอดแท็กได้ — สร้างและลบแท็กทำได้เฉพาะ Admin/PM">
             <div class="space-y-2">

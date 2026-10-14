@@ -18,10 +18,14 @@
             </form>
 
             <div class="flex items-center gap-2">
+@if (auth()->user()->allows('page.export'))
                 <a href="{{ route('projects.export', $filters) }}" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium text-slate-600 hover:bg-slate-50">
                     Export CSV
                 </a>
+                @endif
+                @editplan
                 <a href="{{ route('projects.create') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
+                @endeditplan
                     + New Project
                 </a>
             </div>
@@ -50,7 +54,7 @@
                                 </td>
                                 <td class="px-5 py-3 text-slate-600">{{ $project->customer_name }}</td>
                                 <td class="px-5 py-3 text-slate-600 whitespace-nowrap">
-                                    {{ optional($project->due_date)->format('d/m/Y') ?? '-' }}
+                                    {{ optional($project->due_date)->thaiDate() ?? '-' }}
                                     @if ($project->due_date && ! in_array($project->status, [\App\Models\Project::STATUS_COMPLETED, \App\Models\Project::STATUS_CANCELLED], true))
                                         @php $days = $project->days_remaining; @endphp
                                         <p class="mt-0.5">

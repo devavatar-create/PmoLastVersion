@@ -44,6 +44,9 @@ class ProgressService
         );
 
         $this->recalculateSubtask($checklist->subtask);
+        if ($completed) {
+            app(HandoffService::class)->ticked($checklist, $user);   // Settings > การส่งต่องาน: the next department hears it
+        }
 
         return $checklist->fresh();
     }

@@ -8,7 +8,12 @@ class DepartmentField extends Model
 {
     public const TYPES = ['select' => 'ตัวเลือก (dropdown)', 'text' => 'กล่องข้อความ', 'link' => 'ลิงก์'];
 
-    protected $fillable = ['department_id', 'name', 'type', 'sort'];
+    protected $fillable = ['department_id', 'name', 'type', 'show_on_chip', 'sort'];
+
+    protected function casts(): array
+    {
+        return ['show_on_chip' => 'boolean'];
+    }
 
     public function department()
     {

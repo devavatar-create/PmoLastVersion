@@ -211,7 +211,7 @@ class PlanningSyncTest extends TestCase
         $this->assertSame(['COMPLETED', 'COMPLETED'], [$this->stateOf($a), $this->stateOf($b)]);
     }
 
-    public function test_project_header_edits_follow_project_visibility_with_priority_mapping(): void
+    public function test_project_header_edits_are_for_admin_and_pm_with_priority_mapping(): void
     {
         $this->subtask($this->busbar);
         $pm = $this->user($this->busbar, 'project_manager');
@@ -220,7 +220,7 @@ class PlanningSyncTest extends TestCase
 
         $this->assertFalse($this->apply($this->user($this->wiring), $op(['title' => 'Hacked']))['ok'], 'a department with no work in the project cannot touch it');
         $this->assertSame('MDB', $this->project->fresh()->project_name);
-        $this->assertTrue($this->apply($member, $op(['description' => 'by a member']))['ok'], 'a member of a department working on it can, as on the Project screens');
+        $this->assertFalse($this->apply($member, $op(['description' => 'by a member']))['ok'], 'project data: Admin / PM only, even for a department working on it');
 
         $this->assertTrue($this->apply($pm, $op(['title' => 'New name', 'priority' => 'urgent', 'description' => 'desc', 'date' => '2026-11-15', 'startDate' => '2026-10-05']))['ok']);
         $p = $this->project->fresh();
@@ -248,8 +248,8 @@ class PlanningSyncTest extends TestCase
 
         $this->assertFalse($this->apply($this->user($this->busbar), $due('2026-10-22', 'wiring'))['ok'], "a member cannot move another department's date");
         $this->assertSame('2026-10-25', $qc->fresh()->due_date->format('Y-m-d'));
-        $this->assertTrue($this->apply($this->user($this->busbar), $due('2026-10-21'))['ok'], "a member can move their own department's date");
-        $this->assertSame('2026-10-21', $open->fresh()->due_date->format('Y-m-d'));
+        $this->assertFalse($this->apply($this->user($this->busbar), $due('2026-10-21'))['ok'], "dates are Admin / PM only - not even the department's own");
+        $this->assertSame('2026-10-20', $open->fresh()->due_date->format('Y-m-d'));
 
         $this->assertTrue($this->apply($pm, $due('2026-10-22'))['ok']);
         $this->assertSame(['2026-10-22', '2026-10-05', '2026-10-25'], [$open->fresh()->due_date->format('Y-m-d'), $done->fresh()->due_date->format('Y-m-d'), $qc->fresh()->due_date->format('Y-m-d')]);
@@ -449,6 +449,7 @@ class PlanningSyncTest extends TestCase
     {
         $this->subtask($this->busbar);
         $member = $this->user($this->busbar);
+        $this->app->terminate();   // the set-up's saves belong to a request that has ended
 
         $first = $this->actingAs($member)->getJson(route('planning.data'))->assertOk();
         $etag = $first->headers->get('ETag');
@@ -459,9 +460,24 @@ class PlanningSyncTest extends TestCase
         $again->assertStatus(304);
         $this->assertSame('', $again->getContent());
 
-        CabinetSubtask::query()->update(['due_date' => '2026-12-24']);   // something changed -> a fresh body and a new tag
+        $this->travel(1)->seconds();
+        CabinetSubtask::query()->update(['due_date' => '2026-12-24']);   // something changed (a raw update: no model events) -> a fresh body and a new tag
         $changed = $this->actingAs($member)->withHeaders(['If-None-Match' => $etag])->getJson(route('planning.data'))->assertOk();
         $this->assertNotSame($etag, $changed->headers->get('ETag'));
+        $this->assertSame('2026-12-24', $changed->json('root.boards.pmo.tasks.0.deptStages.0.end'));
+
+        // a change in the SAME second (same counts, same updated_at) through a model: the board version catches it
+        $etag = $changed->headers->get('ETag');
+        $item = CabinetChecklist::first();
+        $item->forceFill(['remark' => 'same second'])->save();
+        $this->app->terminate();   // the request that saved it ends
+        $this->assertNotSame($etag, $this->actingAs($member)->withHeaders(['If-None-Match' => $etag])->getJson(route('planning.data'))->assertOk()->headers->get('ETag'));
+
+        // and, whatever happens, a poll rebuilds at least every STAMP_MAX_AGE seconds
+        $etag = $this->actingAs($member)->getJson(route('planning.data'))->headers->get('ETag');
+        $this->assertSame(304, $this->actingAs($member)->withHeaders(['If-None-Match' => $etag])->get(route('planning.data'))->status());
+        $this->travel(PlanningBoard::STAMP_MAX_AGE)->seconds();
+        $this->assertSame(200, $this->actingAs($member)->withHeaders(['If-None-Match' => $etag])->get(route('planning.data'))->status());
 
         $this->app['auth']->forgetGuards();
         $this->getJson(route('planning.data'))->assertUnauthorized();
@@ -499,5 +515,20 @@ class PlanningSyncTest extends TestCase
 
         $pmElsewhere = $stage($this->user($this->wiring, 'project_manager'));
         $this->assertFalse($pmElsewhere['canAccept'] || $pmElsewhere['canStart'] || $pmElsewhere['canComplete'], 'the workflow belongs to the department\'s own members');
+    }
+
+    public function test_the_checklist_window_gets_task_and_sub_task_and_adds_to_the_one_picked(): void
+    {
+        $first = $this->subtask($this->busbar, 'ACCEPTED');
+        $second = CabinetSubtask::forceCreate(['cabinet_task_id' => $this->task->id, 'name' => 'ประกอบ', 'department_id' => $this->busbar->id, 'assignment_status' => 'ACCEPTED', 'status' => 'not_started', 'progress' => 0, 'sequence' => 9]);
+        $member = $this->user($this->busbar);
+
+        $cab = app(PlanningBoard::class)->build($member)['boards']['pmo']['tasks'][0]['subtasks'][0];
+        $this->assertSame([['T', 'Busbar', 's'.$first->id], ['T', 'ประกอบ', 's'.$second->id]], array_map(fn ($w) => [$w['task'], $w['name'], $w['id']], $cab['works']));
+        $this->assertSame(['s'.$first->id, 's'.$first->id], array_column($cab['checklist'], 'subId'));
+
+        $this->assertTrue($this->apply($member, ['type' => 'checklist_add', 'taskId' => 'p'.$this->project->id, 'cabinetId' => 'c'.$this->cabinet->id, 'deptId' => $this->dept($this->busbar), 'subtaskId' => 's'.$second->id, 'text' => 'ใหม่'])['ok']);
+        $this->assertSame(['ใหม่'], $second->checklists()->pluck('name')->all(), 'into the Sub Task picked, not the department\'s first one');
+        $this->assertFalse($this->apply($member, ['type' => 'checklist_add', 'taskId' => 'p'.$this->project->id, 'cabinetId' => 'c'.$this->cabinet->id, 'subtaskId' => 's99999', 'text' => 'x'])['ok']);
     }
 }

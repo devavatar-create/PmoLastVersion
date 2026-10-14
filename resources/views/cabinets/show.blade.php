@@ -1,16 +1,25 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex items-center gap-2">
-            <a href="{{ route('projects.show', $cabinet->project) }}" class="text-sm text-slate-400 hover:text-slate-600">{{ $cabinet->project->project_no }}</a>
-            <span class="text-slate-300">/</span>
+        <div class="flex min-w-0 items-center gap-2">
+            <x-back-link :href="route('projects.show', [$cabinet->project, 'tab' => 'cabinets'])" :label="$cabinet->project->project_no" />
+            <a href="{{ route('projects.show', [$cabinet->project, 'tab' => 'cabinets']) }}" class="hidden text-sm text-slate-400 hover:text-slate-600 sm:inline">{{ $cabinet->project->project_no }}</a>
+            <span class="hidden text-slate-300 sm:inline">/</span>
             <h2 class="text-lg font-semibold text-slate-900">{{ $cabinet->mo_no }}</h2>
         </div>
     </x-slot>
 
     @php
-        $initialTab = in_array(request('tab'), ['tasks', 'attachments', 'comment', 'activity']) ? request('tab') : 'tasks';
+        $checklistEditor = app(\App\Services\ChecklistEditor::class);
+        $handoff = app(\App\Services\HandoffService::class);   // one instance: Settings > การส่งต่องาน is read once for the page
+        $linkedByDept = [];   // department id => what the departments passing work to it did in this cabinet (once per department)
+        $files = app(\App\Services\ProjectFiles::class);
+        $cabinetFolder = $files->cabinetFolder($cabinet);   // where the file manager opens - if this person may see it (else the project's top level)
+        $cabinetFolder = $cabinetFolder && $files->sees($cabinetFolder, auth()->user()) ? $cabinetFolder : null;
+        $canFiles = auth()->user()->allows('data.files');   // Settings > สิทธิ์การใช้งาน
+        $canComments = auth()->user()->allows('data.comments');
+        $initialTab = in_array(request('tab'), array_merge(['tasks'], $canFiles ? ['attachments'] : [], $canComments ? ['comment', 'activity'] : [])) ? request('tab') : 'tasks';
     @endphp
-    <div class="max-w-screen-2xl mx-auto space-y-6" x-data="{ tab: '{{ $initialTab }}' }">
+    <div class="max-w-screen-2xl mx-auto space-y-6" x-data="{ tab: '{{ $initialTab }}' }" x-init="$watch('tab', (t) => keepTabInUrl(t, 'tasks'))">
         <x-closed-project-banner :project="$cabinet->project" />
 
         <x-card>
@@ -24,23 +33,25 @@
                         <div><dt class="text-slate-400 text-xs">Cabinet Type</dt><dd class="font-medium text-slate-700">{{ $cabinet->cabinet_type ?? '-' }}</dd></div>
                         <div><dt class="text-slate-400 text-xs">ขนาดตู้</dt><dd class="font-medium text-slate-700">{{ $cabinet->size ?? '-' }}</dd></div>
                         <div><dt class="text-slate-400 text-xs">Quantity</dt><dd class="font-medium text-slate-700">{{ $cabinet->quantity }}</dd></div>
-                        <div><dt class="text-slate-400 text-xs">Start Date</dt><dd class="font-medium text-slate-700">{{ optional($cabinet->start_date)->format('d/m/Y') ?? '-' }}</dd></div>
-                        <div><dt class="text-slate-400 text-xs">Due Date</dt><dd class="font-medium text-slate-700">{{ optional($cabinet->due_date)->format('d/m/Y') ?? '-' }}</dd></div>
+                        <div><dt class="text-slate-400 text-xs">Start Date</dt><dd class="font-medium text-slate-700">{{ optional($cabinet->start_date)->thaiDate() ?? '-' }}</dd></div>
+                        <div><dt class="text-slate-400 text-xs">Due Date</dt><dd class="font-medium text-slate-700">{{ optional($cabinet->due_date)->thaiDate() ?? '-' }}</dd></div>
                         <div>
                             <dt class="text-slate-400 text-xs">วันคาดว่าจะเสร็จ</dt>
                             <dd class="font-medium {{ $cabinet->expected_completion_date && $cabinet->due_date && $cabinet->expected_completion_date->gt($cabinet->due_date) ? 'text-red-600' : 'text-slate-700' }}">
-                                {{ optional($cabinet->expected_completion_date)->format('d/m/Y') ?? '-' }}
+                                {{ optional($cabinet->expected_completion_date)->thaiDate() ?? '-' }}
                             </dd>
                         </div>
                         <div><dt class="text-slate-400 text-xs">วันทำงานทั้งหมด (ไม่รวมเสาร์-อาทิตย์)</dt><dd class="font-medium text-slate-700">{{ $cabinet->total_working_days !== null ? $cabinet->total_working_days.' วัน' : '- (ต้องตั้ง Start/Due Date ก่อน)' }}</dd></div>
                     </dl>
                 </div>
                 <div class="flex gap-2 shrink-0">
+                    @editplan
                     <a href="{{ route('cabinets.edit', $cabinet) }}" class="px-3 py-2 rounded-lg bg-slate-100 text-sm font-medium text-slate-700 hover:bg-slate-200">Edit</a>
                     <form method="POST" action="{{ route('cabinets.destroy', $cabinet) }}" onsubmit="return confirm('ยืนยันการลบตู้ {{ $cabinet->mo_no }} นี้? Task/Sub Task/Checklist ทั้งหมดของตู้นี้จะย้ายไปถังขยะ (Admin/PM กู้คืนได้)')">
                         @csrf @method('DELETE')
                         <button class="px-3 py-2 rounded-lg bg-red-50 text-sm font-medium text-red-600 hover:bg-red-100">Delete</button>
                     </form>
+                    @endeditplan
                 </div>
             </div>
 
@@ -69,56 +80,39 @@
             <button type="button" @click="tab = 'tasks'"
                     :class="tab === 'tasks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
                     class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Tasks</button>
+            @if ($canFiles)
             <button type="button" @click="tab = 'attachments'"
                     :class="tab === 'attachments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">ไฟล์แนบ ({{ $cabinet->attachments->count() }})</button>
+                    class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">ไฟล์ ({{ $cabinetFolder ? $files->count($cabinet->project, $cabinetFolder, auth()->user()) : 0 }})</button>
+            @endif
+            @if ($canComments)
             <button type="button" @click="tab = 'comment'"
                     :class="tab === 'comment' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
                     class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Comment</button>
             <button type="button" @click="tab = 'activity'"
                     :class="tab === 'activity' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
                     class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Activity Log</button>
+            @endif
         </div>
 
+        @if ($canComments)
         <div x-show="tab === 'comment'" x-cloak>
             <x-comment-thread :comments="$comments" note-route="cabinets.notes.store" :note-model="$cabinet"
                                title="Comment" subtitle="ความคิดเห็น/บันทึกของตู้นี้ เรียงล่าสุดก่อน" />
         </div>
 
         <div x-show="tab === 'activity'" x-cloak>
-            <x-activity-tree :url="route('cabinets.activity-tree', $cabinet)" :export-url="route('cabinets.activity-export', $cabinet)" subtitle="ประวัติการเปลี่ยนแปลงทั้งหมดของตู้นี้ จัดกลุ่มตามงาน เรียงล่าสุดก่อน" />
+            <x-activity-tree :url="route('cabinets.activity-tree', $cabinet)" :export-url="auth()->user()->allows('page.export') ? route('cabinets.activity-export', $cabinet) : null" subtitle="ประวัติการเปลี่ยนแปลงทั้งหมดของตู้นี้ จัดกลุ่มตามงาน เรียงล่าสุดก่อน" />
         </div>
 
+        @endif
+
+        @if ($canFiles)
         <div x-show="tab === 'attachments'" x-cloak>
-            <x-card title="ไฟล์แนบ" :subtitle="$cabinet->attachments->count().' ไฟล์'">
-                <x-slot name="actions">
-                    <button type="button" x-data @click="$dispatch('open-modal', 'add-attachment')" class="text-sm font-medium text-blue-600 hover:underline">+ อัปโหลดไฟล์</button>
-                </x-slot>
-
-                <ul class="divide-y divide-slate-100 -mx-5 -mb-5">
-                    @forelse ($cabinet->attachments as $attachment)
-                        <li class="px-5 py-3 flex items-center gap-3 text-sm">
-                            <svg class="w-5 h-5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                            <div class="min-w-0 flex-1">
-                                <a href="{{ $attachment->url }}" target="_blank" class="font-medium text-blue-600 hover:underline break-all">{{ $attachment->original_name }}</a>
-                                @if ($attachment->description)
-                                    <p class="text-slate-500 text-xs mt-0.5">{{ $attachment->description }}</p>
-                                @endif
-                                <p class="text-slate-400 text-xs mt-0.5">
-                                    {{ $attachment->size_for_humans }} · อัปโหลดโดย {{ $attachment->uploadedBy?->name ?? 'ระบบ' }}, {{ $attachment->created_at->format('d/m/Y H:i') }}
-                                </p>
-                            </div>
-                            <form method="POST" action="{{ route('cabinet-attachments.destroy', $attachment) }}" onsubmit="return confirm('ลบไฟล์นี้?')" class="shrink-0">
-                                @csrf @method('DELETE')
-                                <button class="text-xs text-red-500 hover:underline">Delete</button>
-                            </form>
-                        </li>
-                    @empty
-                        <li class="px-5 py-6 text-center text-slate-400 text-sm">ยังไม่มีไฟล์แนบ</li>
-                    @endforelse
-                </ul>
-            </x-card>
+            {{-- the project's file manager, opened at this cabinet's own folder --}}
+            <x-file-manager :project="$cabinet->project" :start="$cabinetFolder?->id" />
         </div>
+        @endif
 
         <div x-show="tab === 'tasks'" class="space-y-4">
             @foreach ($cabinet->tasks as $task)
@@ -130,17 +124,19 @@
                                 <h3 class="font-semibold text-slate-900">{{ $task->name }}</h3>
                                 <x-status-badge :status="$task->status" id="task-{{ $task->id }}" />
                                 @if ($task->start_date)
-                                    <span class="text-xs text-slate-400 whitespace-nowrap">เริ่ม {{ $task->start_date->format('d/m/Y') }}</span>
+                                    <span class="text-xs text-slate-400 whitespace-nowrap">เริ่ม {{ $task->start_date->thaiDate() }}</span>
                                 @endif
                                 @if ($task->due_date)
-                                    <span class="text-xs text-slate-400 whitespace-nowrap">จบ {{ $task->due_date->format('d/m/Y') }}</span>
+                                    <span class="text-xs text-slate-400 whitespace-nowrap">จบ {{ $task->due_date->thaiDate() }}</span>
                                     @if ($task->status !== \App\Models\CabinetTask::STATUS_COMPLETED)
                                         <span class="text-xs font-medium px-1.5 py-0.5 rounded whitespace-nowrap {{ $task->days_remaining < 0 ? 'bg-red-100 text-red-700' : ($task->days_remaining <= 3 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500') }}">
                                             {{ $task->days_remaining >= 0 ? 'เหลือ '.$task->days_remaining.' วัน' : 'เลยกำหนด '.abs($task->days_remaining).' วัน' }}
                                         </span>
                                     @endif
                                 @endif
+                                @editplan
                                 <button type="button" x-data @click.stop.prevent="$dispatch('open-modal', 'edit-task-{{ $task->id }}')" class="text-xs font-medium text-blue-600 hover:underline shrink-0">Edit</button>
+                                @endeditplan
                             </div>
                             <div class="w-full sm:w-52 sm:shrink-0">
                                 <div class="flex items-center justify-end gap-2 mb-1">
@@ -155,7 +151,7 @@
 
                         <div class="border-t border-slate-100 divide-y divide-slate-100">
                             @forelse ($task->subtasks as $subtask)
-                                <details class="pl-12 pr-5 py-3 border-l-2 border-slate-100 ml-5" x-data="{ addChecklist: false, copyChecklist: false }">
+                                <details class="pl-12 pr-5 py-3 border-l-2 border-slate-100 ml-5" id="subtask-{{ $subtask->id }}">
                                     <summary class="list-none cursor-pointer flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                                         <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 sm:min-w-[22rem] flex-1">
                                             <span class="text-sm font-medium text-slate-800 min-w-[10rem] max-w-xs">{{ $subtask->name }}</span>
@@ -164,10 +160,10 @@
                                                 @include('cabinets.partials._assignment', ['subtask' => $subtask, 'departments' => $departments])
                                             </div>
                                             @if ($subtask->start_date)
-                                                <span class="text-xs text-slate-400 whitespace-nowrap">เริ่ม {{ $subtask->start_date->format('d/m/Y') }}</span>
+                                                <span class="text-xs text-slate-400 whitespace-nowrap">เริ่ม {{ $subtask->start_date->thaiDate() }}</span>
                                             @endif
                                             @if ($subtask->due_date)
-                                                <span class="text-xs text-slate-400 whitespace-nowrap">จบ {{ $subtask->due_date->format('d/m/Y') }}</span>
+                                                <span class="text-xs text-slate-400 whitespace-nowrap">จบ {{ $subtask->due_date->thaiDate() }}</span>
                                                 @if ($subtask->status !== \App\Models\CabinetSubtask::STATUS_COMPLETED)
                                                     <span class="text-xs font-medium px-1.5 py-0.5 rounded whitespace-nowrap {{ $subtask->days_remaining < 0 ? 'bg-red-100 text-red-700' : ($subtask->days_remaining <= 3 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500') }}">
                                                         {{ $subtask->days_remaining >= 0 ? 'เหลือ '.$subtask->days_remaining.' วัน' : 'เลยกำหนด '.abs($subtask->days_remaining).' วัน' }}
@@ -185,79 +181,18 @@
                                                 </div>
                                                 <x-progress-bar :value="$subtask->progress" size="sm" id="subtask-{{ $subtask->id }}" />
                                             </div>
-                                            <button type="button" @click.stop.prevent="addChecklist = !addChecklist" class="text-xs font-medium text-blue-600 hover:underline">+ Checklist</button>
-                                            <button type="button" @click.stop.prevent="copyChecklist = !copyChecklist" class="text-xs font-medium text-blue-600 hover:underline">คัดลอกจาก Sub Task อื่น</button>
+                                            @editplan
                                             <button type="button" x-data @click.stop.prevent="$dispatch('open-modal', 'edit-subtask-{{ $subtask->id }}')" class="text-xs font-medium text-blue-600 hover:underline">Edit</button>
+                                            @endeditplan
                                         </div>
                                     </summary>
 
-                                    <ul class="mt-3 ml-7 space-y-2" data-checklist-list="{{ $subtask->id }}">
-                                        @forelse ($subtask->checklists as $checklist)
-                                            <li class="flex items-center gap-2 text-sm">
-                                                <input type="checkbox"
-                                                       class="checklist-toggle rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                       data-checklist-id="{{ $checklist->id }}"
-                                                       data-url="{{ route('checklists.toggle', $checklist) }}"
-                                                       @checked($checklist->is_completed)>
-                                                <span class="{{ $checklist->is_completed ? 'text-slate-400 line-through' : 'text-slate-700' }}" data-checklist-label="{{ $checklist->id }}">
-                                                    {{ $checklist->name }}
-                                                </span>
-                                                @if ($checklist->is_completed && $checklist->completedBy)
-                                                    <span class="text-xs text-slate-400" data-checklist-meta="{{ $checklist->id }}">
-                                                        — {{ $checklist->completedBy->name }}, {{ $checklist->completed_at?->format('d/m/Y H:i') }}
-                                                    </span>
-                                                @else
-                                                    <span class="text-xs text-slate-400" data-checklist-meta="{{ $checklist->id }}"></span>
-                                                @endif
-                                                <span class="checklist-remark-display ml-auto cursor-pointer text-xs border-b border-dashed border-slate-300 hover:border-slate-400 hover:text-slate-600 truncate max-w-[8rem] {{ $checklist->remark ? 'text-slate-500' : 'text-slate-300 italic' }}"
-                                                      data-checklist-id="{{ $checklist->id }}" title="กดเพื่อแก้ไขหมายเหตุ">{{ $checklist->remark ?: 'หมายเหตุ' }}</span>
-                                                <form method="POST" action="{{ route('checklists.update-remark', $checklist) }}" class="hidden items-center gap-1" data-checklist-id="{{ $checklist->id }}">
-                                                    @csrf @method('PATCH')
-                                                    <input type="text" name="remark" value="{{ $checklist->remark }}"
-                                                           placeholder="หมายเหตุ" title="หมายเหตุ"
-                                                           class="checklist-remark-input rounded border-slate-300 text-xs py-0.5 px-1.5 w-40">
-                                                </form>
-                                                <form method="POST" action="{{ route('checklists.destroy', $checklist) }}" onsubmit="return confirm('ลบ Checklist นี้?')">
-                                                    @csrf @method('DELETE')
-                                                    <button class="text-xs text-red-500 hover:underline">Delete</button>
-                                                </form>
-                                            </li>
-                                        @empty
-                                            <li class="text-xs text-slate-400">ยังไม่มี Checklist</li>
-                                        @endforelse
-                                    </ul>
-
-                                    <div x-show="addChecklist" x-cloak class="mt-3 ml-7">
-                                        <form method="POST" action="{{ route('checklists.store', $subtask) }}" class="flex items-end gap-2">
-                                            @csrf
-                                            <div class="flex-1">
-                                                <textarea name="names" rows="2" required
-                                                          placeholder="พิมพ์ชื่อ Checklist บรรทัดละ 1 รายการ (เฉพาะตู้นี้ ไม่กระทบ Template)"
-                                                          class="block w-full rounded-lg border-slate-300 text-sm"></textarea>
-                                            </div>
-                                            <button class="px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 self-start">Add</button>
-                                        </form>
-                                    </div>
-
-                                    <div x-show="copyChecklist" x-cloak class="mt-3 ml-7">
-                                        <form method="POST" action="{{ route('checklists.copy', $subtask) }}" class="checklist-copy-form flex items-end gap-2" data-subtask-id="{{ $subtask->id }}">
-                                            @csrf
-                                            <div class="flex-1">
-                                                <select name="source_subtask_id" required class="block w-full rounded-lg border-slate-300 text-sm">
-                                                    <option value="">-- เลือก Sub Task ต้นทางที่จะคัดลอก Checklist มา --</option>
-                                                    @foreach ($cabinet->tasks as $otherTask)
-                                                        <optgroup label="{{ $otherTask->name }}">
-                                                            @foreach ($otherTask->subtasks as $otherSubtask)
-                                                                @continue($otherSubtask->id === $subtask->id)
-                                                                <option value="{{ $otherSubtask->id }}">{{ $otherSubtask->name }} ({{ $otherSubtask->checklists->count() }} รายการ)</option>
-                                                            @endforeach
-                                                        </optgroup>
-                                                    @endforeach
-                                                </select>
-                                            </div>
-                                            <button class="px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 self-start shrink-0">Copy</button>
-                                        </form>
-                                    </div>
+                                    {{-- the one checklist editor: tick, edit in place, add many / paste from Excel, select to move / copy / delete, undo --}}
+                                    <x-checklist-editor kind="subtask" :owner="$subtask" class="mt-3 ml-7"
+                                                        :items="$checklistEditor->items('subtask', $subtask)"
+                                                        :editable="$subtask->isChecklistEditableBy(auth()->user())"
+                                                        :date-label="$handoff->dateLabel($subtask->department_id)"
+                                                        :linked="$linkedByDept[$subtask->department_id] ??= $handoff->linkedForDepartment($subtask->department_id, collect([$cabinet->id]))->get($cabinet->id, [])" />
                                 </details>
                             @empty
                                 <p class="px-5 py-4 text-sm text-slate-400">ยังไม่มี Sub Task</p>
@@ -268,30 +203,6 @@
             @endforeach
         </div>
     </div>
-
-    <x-modal name="add-attachment">
-        <form method="POST" action="{{ route('cabinet-attachments.store', $cabinet) }}" enctype="multipart/form-data" class="p-6">
-            @csrf
-            <h3 class="text-base font-semibold text-slate-900 mb-4">อัปโหลดไฟล์แนบ — {{ $cabinet->mo_no }}</h3>
-            <div class="space-y-4">
-                <div>
-                    <x-input-label value="ไฟล์" />
-                    <input type="file" name="file" required
-                           class="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200">
-                    <p class="text-xs text-slate-400 mt-1">รองรับ PDF, Word, Excel, รูปภาพ, DWG/DXF — ไม่เกิน 20 MB</p>
-                    <x-input-error :messages="$errors->get('file')" class="mt-1" />
-                </div>
-                <div>
-                    <x-input-label value="รายละเอียด (ไฟล์นี้คืออะไร)" />
-                    <textarea name="description" rows="2" placeholder="เช่น แบบ Wiring Diagram แก้ไขล่าสุด" class="mt-1 block w-full rounded-lg border-slate-300 text-sm"></textarea>
-                </div>
-            </div>
-            <div class="mt-6 flex justify-end gap-3">
-                <button type="button" x-data @click="$dispatch('close-modal', 'add-attachment')" class="px-4 py-2 text-sm font-medium text-slate-600">ยกเลิก</button>
-                <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">อัปโหลด</button>
-            </div>
-        </form>
-    </x-modal>
 
     @foreach ($cabinet->tasks as $task)
         <x-modal :name="'edit-task-'.$task->id" :show="old('task_id') == $task->id">
@@ -322,11 +233,26 @@
                         <textarea name="remark" rows="2" class="mt-1 block w-full rounded-lg border-slate-300 text-sm">{{ $task->remark }}</textarea>
                     </div>
                 </div>
-                <div class="mt-6 flex justify-end gap-3">
+                <div class="mt-6 flex items-center justify-end gap-3">
+                    {{-- submits the separate delete form below (a form cannot sit inside another) --}}
+                    @editplan
+                    <button type="submit" form="delete-task-{{ $task->id }}" class="mr-auto px-3 py-2 text-sm font-medium text-red-600 hover:underline">ลบ Task นี้</button>
+                    @endeditplan
                     <button type="button" x-data @click="$dispatch('close-modal', 'edit-task-{{ $task->id }}')" class="px-4 py-2 text-sm font-medium text-slate-600">ยกเลิก</button>
                     <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">Save</button>
                 </div>
             </form>
+            @editplan
+            @php
+                $taken = $task->subtasks->whereIn('assignment_status', [\App\Models\CabinetSubtask::ASSIGNMENT_ACCEPTED, \App\Models\CabinetSubtask::ASSIGNMENT_IN_PROGRESS, \App\Models\CabinetSubtask::ASSIGNMENT_COMPLETED])->count();
+                $ask = 'ลบ Task "'.$task->name.'" ของตู้นี้ พร้อม Sub Task '.$task->subtasks->count().' งาน และ Checklist '.$task->subtasks->sum(fn ($s) => $s->checklists->count()).' รายการ?'
+                    .($taken ? "\n\n⚠ มี ".$taken.' งานที่แผนกรับงานแล้ว — งานนั้นจะหายจากหน้าของแผนกด้วย' : '')
+                    ."\n\nกู้คืนได้จากถังขยะ · เทมเพลตไม่เปลี่ยน";
+            @endphp
+            <form id="delete-task-{{ $task->id }}" method="POST" action="{{ route('cabinet-tasks.destroy', $task) }}" onsubmit="return confirm({{ \Illuminate\Support\Js::from($ask) }})" class="hidden">
+                @csrf @method('DELETE')
+            </form>
+            @endeditplan
         </x-modal>
 
         @foreach ($task->subtasks as $subtask)
@@ -393,11 +319,25 @@
                             <textarea name="remark" rows="2" class="mt-1 block w-full rounded-lg border-slate-300 text-sm">{{ $subtask->remark }}</textarea>
                         </div>
                     </div>
-                    <div class="mt-6 flex justify-end gap-3">
+                    <div class="mt-6 flex items-center justify-end gap-3">
+                        @editplan
+                        <button type="submit" form="delete-subtask-{{ $subtask->id }}" class="mr-auto px-3 py-2 text-sm font-medium text-red-600 hover:underline">ลบ Sub Task นี้</button>
+                        @endeditplan
                         <button type="button" x-data @click="$dispatch('close-modal', 'edit-subtask-{{ $subtask->id }}')" class="px-4 py-2 text-sm font-medium text-slate-600">ยกเลิก</button>
                         <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">Save</button>
                     </div>
                 </form>
+                @editplan
+                @php
+                    $ask = 'ลบ Sub Task "'.$subtask->name.'" ของตู้นี้ พร้อม Checklist '.$subtask->checklists->count().' รายการ?'
+                        .(in_array($subtask->assignment_status, [\App\Models\CabinetSubtask::ASSIGNMENT_ACCEPTED, \App\Models\CabinetSubtask::ASSIGNMENT_IN_PROGRESS, \App\Models\CabinetSubtask::ASSIGNMENT_COMPLETED], true)
+                            ? "\n\n⚠ แผนก ".($subtask->department?->name ?? '-').' รับงานนี้แล้ว — งานจะหายจากหน้าของแผนกด้วย' : '')
+                        ."\n\nกู้คืนได้จากถังขยะ · เทมเพลตไม่เปลี่ยน";
+                @endphp
+                <form id="delete-subtask-{{ $subtask->id }}" method="POST" action="{{ route('cabinet-subtasks.destroy', $subtask) }}" onsubmit="return confirm({{ \Illuminate\Support\Js::from($ask) }})" class="hidden">
+                    @csrf @method('DELETE')
+                </form>
+                @endeditplan
             </x-modal>
         @endforeach
     @endforeach
@@ -405,226 +345,17 @@
     @push('scripts')
     @include('cabinets.partials._assignment-scripts')
     <script>
-        document.addEventListener('change', async (e) => {
-            if (!e.target.matches('.checklist-toggle')) return;
-
-            const checkbox = e.target;
-            const url = checkbox.dataset.url;
-            const id = checkbox.dataset.checklistId;
-            const isCompleted = checkbox.checked;
-            checkbox.disabled = true;
-
-            try {
-                const res = await fetch(url, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                    },
-                    body: JSON.stringify({ is_completed: isCompleted }),
-                });
-                if (!res.ok) throw new Error('Request failed');
-                const data = await res.json();
-
-                const label = document.querySelector('[data-checklist-label="'+id+'"]');
-                if (label) label.classList.toggle('line-through', isCompleted);
-                if (label) label.classList.toggle('text-slate-400', isCompleted);
-                if (label) label.classList.toggle('text-slate-700', !isCompleted);
-
-                const meta = document.querySelector('[data-checklist-meta="'+id+'"]');
-                if (meta) {
-                    meta.textContent = data.checklist.is_completed
-                        ? ('— ' + (data.checklist.completed_by_name ?? '') + ', ' + (data.checklist.completed_at_formatted ?? ''))
-                        : '';
-                }
-
-                updateProgress('subtask-' + data.subtask.id, data.subtask.progress);
-                updateStatusBadge('subtask-' + data.subtask.id, data.subtask.status);
-                updateChecklistCount('subtask-' + data.subtask.id, data.subtask.completed_checklists, data.subtask.total_checklists);
-
-                updateProgress('task-' + data.task.id, data.task.progress);
-                updateStatusBadge('task-' + data.task.id, data.task.status);
-                updateChecklistCount('task-' + data.task.id, data.task.completed_checklists, data.task.total_checklists);
-
-                updateProgress('cabinet-' + data.cabinet.id, data.cabinet.progress);
-                updateStatusBadge('cabinet-' + data.cabinet.id, data.cabinet.status);
-                updateChecklistCount('cabinet-' + data.cabinet.id, data.cabinet.completed_checklists, data.cabinet.total_checklists);
-            } catch (err) {
-                checkbox.checked = !isCompleted;
-                alert('ไม่สามารถบันทึกได้ กรุณาลองใหม่');
-            } finally {
-                checkbox.disabled = false;
-            }
-        });
-
-        document.addEventListener('click', (e) => {
-            if (!e.target.matches('.checklist-remark-display')) return;
-
-            const display = e.target;
-            const form = display.nextElementSibling;
-            const input = form.querySelector('.checklist-remark-input');
-
-            display.classList.add('hidden');
-            form.classList.remove('hidden');
-            form.classList.add('flex');
-            input.focus();
-            input.select();
-        });
-
-        document.addEventListener('keydown', (e) => {
-            if (!e.target.matches('.checklist-remark-input')) return;
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            e.target.blur();
-        });
-
-        document.addEventListener('focusout', (e) => {
-            if (!e.target.matches('.checklist-remark-input')) return;
-
-            const input = e.target;
-            const form = input.closest('form');
-            const display = form.previousElementSibling;
-
-            display.textContent = input.value || 'หมายเหตุ';
-            display.classList.toggle('text-slate-500', !!input.value);
-            display.classList.toggle('text-slate-300', !input.value);
-            display.classList.toggle('italic', !input.value);
-
-            form.classList.add('hidden');
-            form.classList.remove('flex');
-            display.classList.remove('hidden');
-        });
-
-        document.addEventListener('change', async (e) => {
-            if (!e.target.matches('.checklist-remark-input')) return;
-
-            const input = e.target;
-            const form = input.closest('form');
-            input.disabled = true;
-
-            try {
-                const res = await fetch(form.action, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                    },
-                    body: JSON.stringify({ remark: input.value || null }),
-                });
-                if (!res.ok) throw new Error('Request failed');
-            } catch (err) {
-                alert('ไม่สามารถบันทึกหมายเหตุได้ กรุณาลองใหม่');
-            } finally {
-                input.disabled = false;
-            }
-        });
-
-        document.addEventListener('submit', async (e) => {
-            if (!e.target.matches('.checklist-copy-form')) return;
-            e.preventDefault();
-
-            const form = e.target;
-            const select = form.querySelector('select[name="source_subtask_id"]');
-            if (!select.value) {
-                alert('กรุณาเลือก Sub Task ต้นทาง');
-                return;
-            }
-
-            const submitBtn = form.querySelector('button');
-            submitBtn.disabled = true;
-
-            try {
-                const res = await fetch(form.action, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                    },
-                    body: JSON.stringify({ source_subtask_id: select.value }),
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || 'Request failed');
-
-                const ul = document.querySelector('[data-checklist-list="' + form.dataset.subtaskId + '"]');
-                if (ul) {
-                    ul.innerHTML = '';
-                    data.checklists.forEach((c) => ul.appendChild(buildChecklistRow(c)));
-                    if (window.initDatePickers) window.initDatePickers(ul);
-                }
-
-                updateProgress('subtask-' + data.subtask.id, data.subtask.progress);
-                updateStatusBadge('subtask-' + data.subtask.id, data.subtask.status);
-                updateChecklistCount('subtask-' + data.subtask.id, data.subtask.completed_checklists, data.subtask.total_checklists);
-
-                updateProgress('task-' + data.task.id, data.task.progress);
-                updateStatusBadge('task-' + data.task.id, data.task.status);
-                updateChecklistCount('task-' + data.task.id, data.task.completed_checklists, data.task.total_checklists);
-
-                updateProgress('cabinet-' + data.cabinet.id, data.cabinet.progress);
-                updateStatusBadge('cabinet-' + data.cabinet.id, data.cabinet.status);
-                updateChecklistCount('cabinet-' + data.cabinet.id, data.cabinet.completed_checklists, data.cabinet.total_checklists);
-
-                select.value = '';
-            } catch (err) {
-                alert(err.message || 'ไม่สามารถคัดลอกได้ กรุณาลองใหม่');
-            } finally {
-                submitBtn.disabled = false;
-            }
-        });
-
-        function buildChecklistRow(c) {
-            const li = document.createElement('li');
-            li.className = 'flex items-center gap-2 text-sm';
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'checklist-toggle rounded border-slate-300 text-blue-600 focus:ring-blue-500';
-            checkbox.dataset.checklistId = c.id;
-            checkbox.dataset.url = c.toggle_url;
-            checkbox.checked = c.is_completed;
-
-            const label = document.createElement('span');
-            label.className = c.is_completed ? 'text-slate-400 line-through' : 'text-slate-700';
-            label.dataset.checklistLabel = c.id;
-            label.textContent = c.name;
-
-            const meta = document.createElement('span');
-            meta.className = 'text-xs text-slate-400';
-            meta.dataset.checklistMeta = c.id;
-
-            const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
-
-            const remarkDisplay = document.createElement('span');
-            remarkDisplay.className = 'checklist-remark-display ml-auto cursor-pointer text-xs border-b border-dashed border-slate-300 hover:border-slate-400 hover:text-slate-600 truncate max-w-[8rem] text-slate-300 italic';
-            remarkDisplay.dataset.checklistId = c.id;
-            remarkDisplay.title = 'กดเพื่อแก้ไขหมายเหตุ';
-            remarkDisplay.textContent = 'หมายเหตุ';
-
-            const remarkForm = document.createElement('form');
-            remarkForm.method = 'POST';
-            remarkForm.action = c.remark_url;
-            remarkForm.className = 'hidden items-center gap-1';
-            remarkForm.dataset.checklistId = c.id;
-            remarkForm.innerHTML = '<input type="hidden" name="_token" value="' + csrfToken + '">'
-                + '<input type="hidden" name="_method" value="PATCH">'
-                + '<input type="text" name="remark" value="" placeholder="หมายเหตุ" title="หมายเหตุ" class="checklist-remark-input rounded border-slate-300 text-xs py-0.5 px-1.5 w-40">';
-
-            const deleteForm = document.createElement('form');
-            deleteForm.method = 'POST';
-            deleteForm.action = c.destroy_url;
-            deleteForm.innerHTML = '<input type="hidden" name="_token" value="' + csrfToken + '">'
-                + '<input type="hidden" name="_method" value="DELETE">'
-                + '<button class="text-xs text-red-500 hover:underline">Delete</button>';
-            deleteForm.addEventListener('submit', (e) => {
-                if (!confirm('ลบ Checklist นี้?')) e.preventDefault();
+        // the checklist editor (x-checklist-editor) reports every change: the Sub Task / Task / cabinet bars follow
+        window.addEventListener('checklist-progress', (e) => {
+            const d = e.detail;
+            ['subtask', 'task', 'cabinet'].forEach((k) => {
+                if (!d[k]) return;
+                updateProgress(k + '-' + d[k].id, d[k].progress);
+                updateStatusBadge(k + '-' + d[k].id, d[k].status);
+                updateChecklistCount(k + '-' + d[k].id, d[k].completed_checklists, d[k].total_checklists);
             });
-
-            li.append(checkbox, label, meta, remarkDisplay, remarkForm, deleteForm);
-            return li;
-        }
+            if (d.assignment && typeof applyAssignment === 'function') applyAssignment(d);   // Automation moved the work
+        });
 
         function updateProgress(id, value) {
             const fill = document.getElementById('progress-fill-' + id);

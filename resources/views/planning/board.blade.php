@@ -5,7 +5,7 @@
 
     {{--
         Planning, written the way the rest of the app is: this Blade page + partials + one Alpine component
-        (partials/_script). Left "งานที่ต้องเสร็จ" panel, one toolbar, เดือน / ไทม์ไลน์ / แดชบอร์ด, and a wide project modal.
+        (resources/js/planning-board.js). Left "งานที่ต้องเสร็จ" panel, one toolbar, เดือน / ไทม์ไลน์ / แดชบอร์ด, and a wide project modal.
         Data = PlanningBoard (controller@board), every edit = one operation through planning.sync (PlanningSync), so the
         permissions and workflow rules are PMO's own. Bleeds to the page edges (negative margins cancel layouts/app's padding).
     --}}
@@ -14,8 +14,11 @@
             <p class="text-sm text-slate-600">บัญชีของคุณยังไม่ได้ผูกกับแผนก จึงยังไม่มีงานให้แสดง กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดแผนกในหน้า Users</p>
         </x-card>
     @else
+    {{-- the page's data as plain JSON (Thai kept as is, half the size of an escaped x-data attribute and quicker for the browser to read);
+         JSON_HEX_TAG turns every < and > into \u003C / \u003E, so nothing inside can close this tag --}}
+    <script type="application/json" id="planning-config">{!! json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_THROW_ON_ERROR) !!}</script>
     <div class="-m-4 sm:-m-6 lg:-m-8 flex flex-col lg:flex-row min-h-[calc(100vh-4rem)] bg-white"
-         x-data="planningBoard(@js($config))" @keydown.escape.window="onEscape()">
+         x-data="planningBoard(JSON.parse(document.getElementById('planning-config').textContent))" @keydown.escape.window="onEscape()">
 
         @include('planning.partials._left-panel')
 
@@ -28,10 +31,9 @@
 
         @include('planning.partials._task-modal')
         @include('planning.partials._checklist-popover')
+        @include('planning.partials._overlays')
     </div>
 
-    @push('scripts')
-    @include('planning.partials._script')
-    @endpush
+    {{-- the page's Alpine component: resources/js/planning-board.js (in the app bundle) --}}
     @endif
 </x-app-layout>

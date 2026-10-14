@@ -56,6 +56,7 @@ class SubtaskAssignmentService
                 'assignment_status' => $departmentId
                     ? CabinetSubtask::ASSIGNMENT_ASSIGNED
                     : CabinetSubtask::ASSIGNMENT_UNASSIGNED,
+                'assigned_at' => $departmentId ? now() : null,   // the "waiting since" of the รอรับเกิน n วัน reminder
             ])->saveQuietly();
 
             $oldName = $this->departmentName($oldDepartmentId);
@@ -109,7 +110,7 @@ class SubtaskAssignmentService
      */
     public function actionsFor(CabinetSubtask $subtask, ?User $user): array
     {
-        $inDepartment = $this->isInAssignedDepartment($subtask, $user);
+        $inDepartment = $this->canActFor($subtask, $user);
 
         return [
             'can_accept' => $inDepartment && $subtask->assignment_status === CabinetSubtask::ASSIGNMENT_ASSIGNED,
@@ -133,11 +134,11 @@ class SubtaskAssignmentService
             'assignment_status_label' => $subtask->assignment_status_label,
             'is_department_locked' => $subtask->is_department_locked,
             'accepted_by_name' => $subtask->acceptedBy?->name,
-            'accepted_at' => $subtask->accepted_at?->format('d/m/Y H:i'),
+            'accepted_at' => $subtask->accepted_at?->thaiDateTime(),
             'started_by_name' => $subtask->startedBy?->name,
-            'started_at' => $subtask->started_at?->format('d/m/Y H:i'),
+            'started_at' => $subtask->started_at?->thaiDateTime(),
             'completed_by_name' => $subtask->completedBy?->name,
-            'completed_at' => $subtask->completed_at?->format('d/m/Y H:i'),
+            'completed_at' => $subtask->completed_at?->thaiDateTime(),
         ] + $this->actionsFor($subtask, $user);
     }
 
@@ -147,7 +148,7 @@ class SubtaskAssignmentService
             $locked = CabinetSubtask::whereKey($subtask->id)->lockForUpdate()->firstOrFail();
             ProjectLock::assertOpen($locked->cabinetTask->cabinet->project_id);
 
-            if (! $this->isInAssignedDepartment($locked, $actor)) {
+            if (! $this->canActFor($locked, $actor)) {
                 throw new AssignmentException('คุณไม่ใช่สมาชิกแผนกที่ได้รับมอบหมายงานนี้', 403);
             }
 
@@ -162,13 +163,21 @@ class SubtaskAssignmentService
             ])->saveQuietly();
 
             $locked->load('department');
-            $this->log($locked, $actor, $action, $describe($locked));
+            // Admin / PM doing it for the department (Settings > กฎการทำงาน): said so in the log
+            $this->log($locked, $actor, $action, $describe($locked).($this->isInAssignedDepartment($locked, $actor) ? '' : " (ทำแทนโดย {$actor->name})"));
             $this->notifications->progressed($locked, $actor, $action);
 
             $this->syncInstance($subtask, $locked);
 
             return $subtask;
         });
+    }
+
+    /** The department's own members - or Admin / PM when Settings > กฎการทำงาน lets them act for departments. */
+    public function canActFor(CabinetSubtask $subtask, ?User $user): bool
+    {
+        return $this->isInAssignedDepartment($subtask, $user)
+            || ($user !== null && $subtask->department_id !== null && $user->canDispatchWork() && AppSetting::get('pmo_acts_for_departments'));
     }
 
     private function isInAssignedDepartment(CabinetSubtask $subtask, ?User $user): bool

@@ -225,3 +225,6 @@ details.group[open] > summary {
 .drag-handle:active {
     cursor: grabbing;
 }
+
+/* keep the page width the same whether or not it scrolls (pages and settings tabs do not jump sideways) */
+html { scrollbar-gutter: stable; }

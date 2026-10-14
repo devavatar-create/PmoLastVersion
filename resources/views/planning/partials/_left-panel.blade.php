@@ -5,6 +5,27 @@
 --}}
 <aside class="lg:w-[300px] lg:shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200">
     <div class="px-4 pb-4 pt-2 lg:sticky lg:top-16 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
+        {{-- รอรับงาน: every project where work handed to my department (or, for Admin / PM allowed to act for departments, any
+             department) still waits to be accepted - accept it here without opening anything --}}
+        <section id="waiting-box" x-show="waitingList().length" x-cloak class="mb-2 mt-2 rounded-lg border border-amber-300 bg-amber-50/70 p-2" aria-label="งานรอรับ">
+            <div class="mb-1.5 flex items-center gap-2">
+                <span class="text-[13px] font-bold text-amber-900" x-text="'📥 รอรับงาน (' + waitingCount() + ')'"></span>
+                <button type="button" x-show="waitingList().length > 1" @click="acceptAll()" class="ml-auto rounded-md bg-amber-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-amber-700">รับทั้งหมด</button>
+            </div>
+            <ul class="max-h-64 space-y-1 overflow-y-auto">
+                <template x-for="w in waitingList()" :key="w.t.id + w.s.deptId">
+                    <li class="flex items-center gap-2 rounded-md bg-white px-2 py-1.5 shadow-sm">
+                        <button type="button" @click="openModal(w.t.id); $nextTick(() => setTimeout(() => openStageFromLink(w.t, w.s.deptId, false), 150))" class="min-w-0 flex-1 text-left">
+                            <span class="block truncate text-xs font-semibold text-slate-800" x-text="w.t.so + ' ' + w.t.title"></span>
+                            <span class="block truncate text-[11px] text-slate-500"
+                                  x-text="(myDept === w.s.deptId ? '' : deptOf(w.s.deptId).name + ' · ') + w.s.pmo.waiting + ' งาน' + (w.s.end ? ' · ส่ง ' + fmtBE(w.s.end) : '') + (w.days > 0 ? ' · รอ ' + w.days + ' วัน' : '')"></span>
+                        </button>
+                        <button type="button" @click="step(w.t, w.s.deptId, 'accept')" class="shrink-0 rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-700">รับงาน</button>
+                    </li>
+                </template>
+            </ul>
+        </section>
+
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-0.5 pb-1.5 pt-2">
             <div class="whitespace-nowrap text-[13.5px] font-bold text-slate-900">งานที่ต้องเสร็จ</div>
             <div class="flex h-7 min-w-0 flex-[1_1_200px] items-stretch gap-1">
@@ -17,7 +38,7 @@
                 <button type="button" @click="$dispatch('open-status-report')" class="inline-flex w-[26px] shrink-0 items-center justify-center rounded-[7px] border border-slate-300 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900" title="รายงานสถานะงาน" aria-label="รายงานสถานะงาน">
                     <svg class="h-[15px] w-[15px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
                 </button>
-                <button type="button" onclick="window.print()" class="inline-flex w-[26px] shrink-0 items-center justify-center rounded-[7px] border border-slate-300 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900" title="พิมพ์" aria-label="พิมพ์">
+                <button type="button" @click="printWorkOrder()" class="inline-flex w-[26px] shrink-0 items-center justify-center rounded-[7px] border border-slate-300 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900" title="พิมพ์ใบสั่งงาน — แผนกที่ดู + วันที่ดู" aria-label="พิมพ์">
                     <svg class="h-[15px] w-[15px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9V3h12v6M6 18H4a1 1 0 01-1-1v-6a2 2 0 012-2h14a2 2 0 012 2v6a1 1 0 01-1 1h-2M7 14h10v7H7z"/></svg>
                 </button>
             </div>
@@ -48,11 +69,11 @@
                             </div>
                             <div class="relative mb-1.5 ml-2.5 mr-2 flex flex-col pl-4 pt-0.5">
                                 <span class="absolute bottom-3 left-1 top-[-2px] w-[1.5px] bg-slate-200"></span>
-                                <template x-for="u in g.cabs" :key="u.c ? u.c.id : 'whole'">
-                                    <div @click="openModal(g.t.id)" :title="rowName(u.c, g.t) + ' — ' + g.t.title" class="relative flex cursor-pointer items-center gap-[7px] rounded-md px-1.5 py-[3px] hover:bg-slate-50">
+                                <template x-for="u in g.cabs" :key="u.key || (u.c ? u.c.id : 'whole')">
+                                    <div @click="openModal(g.t.id)" :title="rowName(u.c, g.t, u) + ' — ' + g.t.title" class="relative flex cursor-pointer items-center gap-[7px] rounded-md px-1.5 py-[3px] hover:bg-slate-50">
                                         <span class="absolute -left-3 top-1/2 h-[1.5px] w-2.5 bg-slate-200"></span>
                                         <span class="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-white" :style="'background-color:' + rowColor(g.t, u.c) + ';box-shadow:0 0 0 1.2px ' + rowColor(g.t, u.c)"></span>
-                                        <span class="min-w-0 flex-1 truncate text-xs" :class="u.done ? 'text-slate-400 line-through' : 'text-slate-900'" x-text="rowName(u.c, g.t)"></span>
+                                        <span class="min-w-0 flex-1 truncate text-xs" :class="u.done ? 'text-slate-400 line-through' : 'text-slate-900'" x-text="rowName(u.c, g.t, u)"></span>
                                         <button type="button" x-show="u.c && cabProgress(u.c, dept || null).total > 0" @click.stop="openChecklist(g.t.id, u.c.id, $event)"
                                                 class="inline-flex shrink-0 items-center gap-[3px] rounded-[10px] border bg-white px-[5px] py-px text-[9px] font-bold hover:border-blue-500 hover:text-blue-600"
                                                 :class="u.c && cabProgress(u.c, dept || null).total > 0 && cabProgress(u.c, dept || null).done === cabProgress(u.c, dept || null).total ? 'border-emerald-500 text-emerald-600' : 'border-slate-300 text-slate-500'" title="เปิด checklist">

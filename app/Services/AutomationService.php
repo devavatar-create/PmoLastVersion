@@ -20,10 +20,19 @@ use App\Models\User;
  */
 class AutomationService
 {
-    public function __construct(private SubtaskAssignmentService $assignments) {}
+    public function __construct(private SubtaskAssignmentService $assignments, private StatusRuleService $statusRules) {}
 
     /** @return bool true when the Sub Task's workflow status changed */
     public function afterChecklistTicked(CabinetSubtask $subtask, User $actor): bool
+    {
+        $changed = $this->moveWork($subtask, $actor);
+        // then Settings > กฎสถานะ: the Planning status of the cabinet / project (never PMO's workflow)
+        $this->statusRules->applyFor($subtask->cabinetTask?->cabinet?->project);
+
+        return $changed;
+    }
+
+    private function moveWork(CabinetSubtask $subtask, User $actor): bool
     {
         $subtask->refresh();
 

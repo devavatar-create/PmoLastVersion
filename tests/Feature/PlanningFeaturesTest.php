@@ -83,20 +83,23 @@ class PlanningFeaturesTest extends TestCase
         $member = $this->user($this->busbar);
         $custom = BoardStatus::create(['name' => 'รอลูกค้า', 'color' => '#123456', 'is_done' => false, 'sort' => 9]);
 
-        $this->assertSame(['s_review', false], [$this->task($member)['statusId'], $this->task($member)['manualStatus']]);
+        $this->assertSame(['pmo_in_progress', false], [$this->task($member)['statusId'], $this->task($member)['manualStatus']], "none picked: PMO's own status");
 
-        $this->assertTrue($this->apply($member, ['type' => 'project', 'taskId' => $this->pid(), 'fields' => ['statusId' => 'x'.$custom->id]])['ok']);
+        $this->assertFalse($this->apply($member, ['type' => 'project', 'taskId' => $this->pid(), 'fields' => ['statusId' => 's_done']])['ok'], 'Admin / PM only');
+        $pm = $this->user(null, 'project_manager');
+        $this->assertTrue($this->apply($pm, ['type' => 'project', 'taskId' => $this->pid(), 'fields' => ['statusId' => 'x'.$custom->id]])['ok']);
         $this->assertSame(['x'.$custom->id, true], [$this->task($member)['statusId'], $this->task($member)['manualStatus']]);
-        $this->assertTrue($this->apply($member, ['type' => 'project', 'taskId' => $this->pid(), 'fields' => ['statusId' => 's_done']])['ok'], 'a built-in one can be picked too');
+        $this->assertTrue($this->apply($pm, ['type' => 'project', 'taskId' => $this->pid(), 'fields' => ['statusId' => 's_done']])['ok'], 'a built-in one can be picked too');
         $this->assertSame('s_done', $this->task($member)['statusId']);
-        $this->assertFalse($this->apply($member, ['type' => 'project', 'taskId' => $this->pid(), 'fields' => ['statusId' => 'x999']])['ok']);
+        $this->assertFalse($this->apply($pm, ['type' => 'project', 'taskId' => $this->pid(), 'fields' => ['statusId' => 'x999']])['ok']);
 
-        $this->assertTrue($this->apply($member, ['type' => 'project', 'taskId' => $this->pid(), 'fields' => ['statusId' => '']])['ok']);
-        $this->assertSame(['s_review', false], [$this->task($member)['statusId'], $this->task($member)['manualStatus']], 'automatic again');
+        $this->assertTrue($this->apply($pm, ['type' => 'project', 'taskId' => $this->pid(), 'fields' => ['statusId' => '']])['ok']);
+        $this->assertSame(['pmo_in_progress', false], [$this->task($member)['statusId'], $this->task($member)['manualStatus']], "back to PMO's own status");
+        $this->assertSame('s_review', $this->task($member)['deptStages'][0]['statusId'], "the department's status is its own, untouched");
         $this->assertSame('in_progress', $this->project->fresh()->status, "PMO's own project status is not touched");
     }
 
-    public function test_tags_are_set_by_editors_and_created_by_pmo_roles(): void
+    public function test_tags_are_set_and_created_by_pmo_roles(): void
     {
         $this->subtask($this->busbar);
         $member = $this->user($this->busbar);
@@ -106,7 +109,8 @@ class PlanningFeaturesTest extends TestCase
         $this->assertTrue($this->apply($pm, ['type' => 'label_create', 'name' => 'ด่วน', 'color' => '#ff0000'])['ok']);
         $label = BoardLabel::first();
 
-        $this->assertTrue($this->apply($member, ['type' => 'labels_set', 'taskId' => $this->pid(), 'labels' => ['l'.$label->id, 'l999', 'junk']])['ok']);
+        $this->assertFalse($this->apply($member, ['type' => 'labels_set', 'taskId' => $this->pid(), 'labels' => ['l'.$label->id]])['ok'], 'tags: Admin / PM only');
+        $this->assertTrue($this->apply($pm, ['type' => 'labels_set', 'taskId' => $this->pid(), 'labels' => ['l'.$label->id, 'l999', 'junk']])['ok']);
         $this->assertSame(['l'.$label->id], $this->task($member)['labels'], 'unknown tags are dropped');
         $board = app(PlanningBoard::class)->build($member)['boards']['pmo'];
         $this->assertSame([['id' => 'l'.$label->id, 'name' => 'ด่วน', 'color' => '#ff0000']], $board['labels']);
@@ -123,6 +127,28 @@ class PlanningFeaturesTest extends TestCase
         $this->assertSame(['d_'.$this->busbar->id, 'd_'.$this->wiring->id], $this->task($this->user(null, 'admin'))['assignees']);
     }
 
+    public function test_admin_or_pm_can_set_a_departments_status_over_the_automatic_one(): void
+    {
+        $this->subtask($this->busbar, 'ACCEPTED');
+        $this->subtask($this->wiring, 'IN_PROGRESS');
+        $member = $this->user($this->busbar);
+        $pm = $this->user(null, 'project_manager');
+        $bus = 'd_'.$this->busbar->id;
+        $stages = fn (User $u) => collect($this->task($u)['deptStages'])->keyBy('deptId');
+        $op = fn (string $statusId, string $dept) => ['type' => 'stage_status', 'taskId' => $this->pid(), 'deptId' => $dept, 'statusId' => $statusId];
+
+        $this->assertFalse($this->apply($member, $op('s_done', $bus))['ok'], 'Admin / PM only');
+        $this->assertTrue($this->apply($pm, $op('s_done', $bus))['ok']);
+        $this->assertSame(['s_done', true], [$stages($member)[$bus]['statusId'], $stages($member)[$bus]['manualStatus']]);
+        $this->assertSame('s_doing', $stages($pm)['d_'.$this->wiring->id]['statusId'], 'only that department');
+        $this->assertSame('pmo_in_progress', $this->task($pm)['statusId'], "the project's status is separate");
+        $this->assertSame('ACCEPTED', CabinetSubtask::where('department_id', $this->busbar->id)->value('assignment_status'), 'the work itself is not touched');
+        $this->assertFalse($this->apply($pm, $op('x999', $bus))['ok']);
+
+        $this->assertTrue($this->apply($pm, $op('', $bus))['ok']);
+        $this->assertSame(['s_review', false], [$stages($pm)[$bus]['statusId'], $stages($pm)[$bus]['manualStatus']], 'automatic again');
+    }
+
     public function test_pmo_roles_see_projects_and_cabinets_with_no_work_yet_members_do_not(): void
     {
         $member = $this->user($this->busbar);
@@ -131,7 +157,7 @@ class PlanningFeaturesTest extends TestCase
         $t = $this->task($pm);
         $this->assertNotNull($t, 'an open project with nothing dispatched still shows for PMO');
         $this->assertSame(['c'.$this->cabinet->id], array_column($t['subtasks'], 'id'));
-        $this->assertSame('s_todo', $t['statusId']);
+        $this->assertSame('pmo_in_progress', $t['statusId']);
         $this->assertNull($this->task($member));
 
         $this->project->update(['status' => 'completed']);
@@ -251,9 +277,9 @@ class PlanningFeaturesTest extends TestCase
     public function test_dragging_bars_is_for_pmo_roles_only(): void
     {
         $month = file_get_contents(resource_path('views/planning/partials/_month.blade.php'));
-        $script = file_get_contents(resource_path('views/planning/partials/_script.blade.php'));
+        $script = file_get_contents(resource_path('js/planning-board.js'));
 
-        $this->assertStringContainsString(':draggable="isPmo && !dept"', $month);
+        $this->assertStringContainsString(':draggable="isPmo && !dept && !b.c"', $month);
         $this->assertStringContainsString('dragStart(e, t) { if (!this.isPmo)', $script);
         $this->assertStringContainsString('if (!t || !this.isPmo || this.dept) return;', $script);
     }

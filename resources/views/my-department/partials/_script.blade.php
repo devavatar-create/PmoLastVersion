@@ -927,7 +927,7 @@
                 initDate(el, field) {
                     if (!window.flatpickr) { el.type = 'date'; el.value = this.pm.project[field] || ''; el.addEventListener('change', () => this.saveProject(field, el.value || null)); return; }
                     window.flatpickr(el, {
-                        dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y', allowInput: true,
+                        dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y', allowInput: true, formatDate: window.thaiFormat, parseDate: window.thaiParse,
                         altInputClass: 'w-[6.75rem] rounded-lg border-slate-300 px-2 py-1 text-sm',
                         defaultDate: this.pm.project[field] || null,
                         onChange: (dates, str) => { if (str !== (this.pm.project[field] || '')) this.saveProject(field, str || null); },

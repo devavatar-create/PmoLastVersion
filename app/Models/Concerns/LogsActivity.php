@@ -117,7 +117,7 @@ trait LogsActivity
         }
 
         if ($value instanceof Carbon) {
-            return $value->format('d/m/Y');
+            return $value->thaiDate();
         }
 
         return (string) $value;

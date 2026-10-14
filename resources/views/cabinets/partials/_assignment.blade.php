@@ -10,9 +10,9 @@
         'COMPLETED' => 'bg-emerald-100 text-emerald-700',
     ][$subtask->assignment_status] ?? 'bg-slate-100 text-slate-600';
     $trail = collect([
-        $subtask->accepted_at ? 'รับงานโดย '.($subtask->acceptedBy?->name ?? '-').' '.$subtask->accepted_at->format('d/m/Y H:i') : null,
-        $subtask->started_at ? 'เริ่มงานโดย '.($subtask->startedBy?->name ?? '-').' '.$subtask->started_at->format('d/m/Y H:i') : null,
-        $subtask->completed_at ? 'เสร็จงานโดย '.($subtask->completedBy?->name ?? '-').' '.$subtask->completed_at->format('d/m/Y H:i') : null,
+        $subtask->accepted_at ? 'รับงานโดย '.($subtask->acceptedBy?->name ?? '-').' '.$subtask->accepted_at->thaiDateTime() : null,
+        $subtask->started_at ? 'เริ่มงานโดย '.($subtask->startedBy?->name ?? '-').' '.$subtask->started_at->thaiDateTime() : null,
+        $subtask->completed_at ? 'เสร็จงานโดย '.($subtask->completedBy?->name ?? '-').' '.$subtask->completed_at->thaiDateTime() : null,
     ])->filter()->implode(' · ');
 @endphp
 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap {{ $badge }}" data-assignment-status

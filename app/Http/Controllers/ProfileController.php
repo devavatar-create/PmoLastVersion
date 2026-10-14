@@ -57,4 +57,28 @@ class ProfileController extends Controller
 
         return Redirect::to('/');
     }
+
+    /** The profile picture shown on comments on the Planning page (a JPG / PNG, or remove=1 to go back to the initial). */
+    public function updateAvatar(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        $request->validate(['avatar' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:2048']]);
+        $dir = public_path('uploads/avatars');
+
+        if ($user->avatar_path) {
+            @unlink($dir.'/'.$user->avatar_path);
+        }
+        $path = null;
+        if (! $request->boolean('remove') && $request->hasFile('avatar')) {
+            if (! is_dir($dir)) {
+                mkdir($dir, 0755, true);
+                file_put_contents($dir.'/.htaccess', "php_flag engine off\nRemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phar\n");
+            }
+            $path = \Illuminate\Support\Str::random(32).'.'.$request->file('avatar')->extension();
+            $request->file('avatar')->move($dir, $path);
+        }
+        $user->forceFill(['avatar_path' => $path])->save();
+
+        return Redirect::route('profile.edit')->with('status', 'avatar-updated');
+    }
 }

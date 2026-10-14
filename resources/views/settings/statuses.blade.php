@@ -3,7 +3,7 @@
         <h2 class="text-lg font-semibold text-slate-900">ตั้งค่า</h2>
     </x-slot>
 
-    <div class="max-w-3xl mx-auto space-y-4">
+    <div class="max-w-none mx-auto space-y-4">
         <x-settings-nav />
 
         <x-card title="สถานะงานบน Planning" subtitle="สถานะที่ระบบคำนวณเอง (มีป้าย “อัตโนมัติ”) ตามความคืบหน้าของแผนก — เปลี่ยนชื่อ/สีได้แต่ลบไม่ได้ ส่วนสถานะที่เพิ่มเอง ผู้ใช้เลือกให้แต่ละโครงการเองได้ในหน้า Planning">

@@ -53,7 +53,7 @@
                                     <span class="font-medium text-slate-800">{{ $subtask->name }}</span>
                                 </td>
                                 <td class="px-5 py-3 text-slate-600 whitespace-nowrap">
-                                    {{ optional($subtask->due_date)->format('d/m/Y') ?? '-' }}
+                                    {{ optional($subtask->due_date)->thaiDate() ?? '-' }}
                                     @if ($subtask->due_date && $subtask->assignment_status !== \App\Models\CabinetSubtask::ASSIGNMENT_COMPLETED)
                                         @php $days = $subtask->days_remaining; @endphp
                                         <p class="mt-0.5">
@@ -76,7 +76,7 @@
                                     {{-- Who accepted the work - useful once real per-user login is in place (today everyone shares the auto-login demo account). Kept live via applyAssignment() in _assignment-scripts.blade.php. --}}
                                     <p class="text-xs text-slate-400 mt-1" data-accepted-by="{{ $subtask->id }}">
                                         @if ($subtask->accepted_by)
-                                            รับงานโดย {{ $subtask->acceptedBy?->name ?? '-' }} · {{ $subtask->accepted_at->format('d/m/Y H:i') }}
+                                            รับงานโดย {{ $subtask->acceptedBy?->name ?? '-' }} · {{ $subtask->accepted_at->thaiDateTime() }}
                                         @endif
                                     </p>
                                 </td>

@@ -22,6 +22,7 @@ class CabinetChecklist extends Model
         'completed_by',
         'completed_at',
         'remark',
+        'expected_date',
         'sequence',
     ];
 
@@ -30,6 +31,7 @@ class CabinetChecklist extends Model
         return [
             'is_completed' => 'boolean',
             'completed_at' => 'datetime',
+            'expected_date' => 'date',
         ];
     }
 
@@ -67,6 +69,7 @@ class CabinetChecklist extends Model
     {
         return [
             'remark' => 'หมายเหตุ',
+            'expected_date' => 'วันที่ (ส่งต่อแผนก)',
         ];
     }
 }

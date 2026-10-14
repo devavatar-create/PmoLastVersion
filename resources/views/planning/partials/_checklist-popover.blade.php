@@ -1,42 +1,105 @@
 {{--
     Checklist popover (the original page's): opens under the checklist pill of a cabinet - in the project modal or in the
-    left panel. Header + progress, the cabinet's items (tick = one operation), grouped by department, "+" to add an item
-    and ✕ to delete one. Names are read-only: PMO has no "rename" for checklist items. Every change is checked by PMO
+    left panel. Header + progress, then Task › Sub Task (department, workflow state, progress, "+") › items (tick = one operation)
+    ✎ rename, 📝 remark, ↑↓ order and ✕ delete an item. Every change is checked by PMO
     (only the department that accepted the work, or PMO roles, may tick / add / delete) and bounces back if refused.
 --}}
 <template x-if="cl && clCab">
-    <div class="fixed z-[60] flex w-[260px] flex-col rounded-[10px] border border-slate-200 bg-white p-3 shadow-2xl max-h-[min(460px,calc(100vh-24px))]"
-         :style="'top:' + cl.top + 'px;left:' + cl.left + 'px'" @click.outside="closeChecklist()" role="dialog" aria-label="Checklist">
+    <div class="fixed z-[60] flex flex-col rounded-[10px] border border-slate-200 bg-white p-3 shadow-2xl"
+         :style="'top:' + cl.top + 'px;left:' + cl.left + 'px;width:' + cl.w + 'px;max-height:' + cl.h + 'px'" @click.outside="closeChecklist()" role="dialog" aria-label="Checklist">
         <div class="mb-2 flex items-center justify-between">
             <span class="truncate text-[13px] font-bold text-slate-900" x-text="clTitle()"></span>
-            <span class="ml-2 shrink-0 text-xs font-semibold text-slate-500 tabular-nums" x-text="clProgress().done + '/' + clProgress().total + ' · ' + clProgress().pct + '%'"></span>
+            <span class="ml-2 flex shrink-0 items-center gap-2">
+                <span class="text-xs font-semibold text-slate-500 tabular-nums" x-text="clProgress().done + '/' + clProgress().total + ' · ' + clProgress().pct + '%'"></span>
+                <button type="button" @click="clToggleBig()" class="rounded-md border border-slate-200 px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100" :title="cl.big ? 'ย่อ' : 'ขยายเต็มจอ'" :aria-label="cl.big ? 'ย่อหน้าต่าง' : 'ขยายหน้าต่าง'" x-text="cl.big ? '⤡' : '⤢'"></button>
+                <button type="button" @click="closeChecklist()" class="px-1 text-lg leading-none text-slate-400 hover:text-slate-700" aria-label="ปิด">&times;</button>
+            </span>
         </div>
-        <p class="-mt-1 mb-2 truncate text-[11px] text-slate-400" x-text="clCab.mo + ' · ' + clCab.text"></p>
+        <p class="-mt-1 mb-2 flex items-center gap-2 text-[11px] text-slate-400"><span class="min-w-0 flex-1 truncate" x-text="clCab.mo + ' · ' + clCab.text"></span>
+            <a :href="cabinetPage(clCab)" class="shrink-0 font-medium text-blue-600 hover:underline" title="หน้าตู้: แก้แบบตาราง เลือกหลายรายการ ย้าย / คัดลอก วางจาก Excel">แก้แบบตาราง ↗</a></p>
         <div class="mb-2.5 h-1.5 overflow-hidden rounded-[3px] bg-slate-100"><div class="h-full rounded-[3px] transition-all" :class="clProgress().pct === 100 ? 'bg-emerald-500' : 'bg-blue-600'" :style="'width:' + clProgress().pct + '%'"></div></div>
 
-        <div class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
-            <template x-for="g in clGroups()" :key="g.deptId">
-                <div>
-                    <div x-show="!dept" class="flex items-center gap-1.5 pt-2 pb-0.5 text-[11px] font-bold text-slate-500">
-                        <span class="h-2 w-2 shrink-0 rounded-full" :style="'background-color:' + deptOf(g.deptId).color"></span><span x-text="deptOf(g.deptId).name"></span>
-                        <button type="button" @click="clAdd(g.deptId)" class="ml-auto rounded px-1 text-sm font-bold text-blue-600 hover:bg-blue-50" title="เพิ่มรายการ" aria-label="เพิ่มรายการ">+</button>
-                    </div>
-                    <template x-for="i in g.items" :key="i.id">
-                        <label class="group flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50">
-                            <input type="checkbox" :checked="i.done" @change="tick(clTask, clCab, i)" class="h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-emerald-600">
-                            <span class="min-w-0 flex-1 truncate text-[13px]" :class="i.done ? 'line-through text-slate-400' : 'text-slate-800'" x-text="i.text" :title="i.text"></span>
-                            <button type="button" @click.prevent="clDelete(i)" class="shrink-0 rounded px-1.5 py-0.5 text-[13px] leading-none text-red-600 opacity-0 hover:bg-red-50 group-hover:opacity-100 focus:opacity-100" title="ลบ" aria-label="ลบรายการ">✕</button>
-                        </label>
-                    </template>
-                    <p x-show="g.items.length === 0 && cl.adding !== g.deptId" class="px-1 py-1 text-xs text-slate-400">ยังไม่มีรายการ</p>
-                    <input x-show="cl.adding === g.deptId" id="cl-draft" x-model="clDraft" type="text" maxlength="255" placeholder="ชื่อรายการ... (Enter เพิ่ม, Esc ยกเลิก)"
-                           @keydown.enter.prevent="clCommit()" @keydown.escape.stop.prevent="cl = { ...cl, adding: null }; clDraft = ''" @blur="clCommit()"
-                           class="mt-1 w-full rounded-md border-slate-300 px-2 py-1 text-[13px]">
+        <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+            {{-- Settings > การส่งต่องาน: the date this department gives its items for the next one, for the whole cabinet at once --}}
+            <template x-for="d in clDateDepts()" :key="'cd' + d">
+                <div class="flex items-center gap-1.5 rounded-md bg-amber-50 px-1.5 py-1 text-[11px] text-amber-900">
+                    <span class="min-w-0 flex-1 truncate" x-text="'ใส่' + deptOf(d).dateLabel + 'ทั้งตู้ · ' + deptOf(d).name"></span>
+                    <input type="text" placeholder="dd/mm/yyyy" x-init="dateField($el, () => '', (v) => setCabDate(d, v), true, 'h-6 w-[6.25rem] !py-0 !pr-2 !text-[11px]')">
                 </div>
             </template>
-            <p x-show="clGroups().length === 0" class="px-1 py-2.5 text-xs leading-relaxed text-slate-400">ยังไม่มีรายการ — checklist มาจากเทมเพลตของ PMO</p>
+            <template x-for="(g, gi) in clGroups()" :key="gi + g.task">
+                <div>
+                    {{-- Task --}}
+                    <p class="truncate pt-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400" x-text="g.task" :title="g.task"></p>
+                    <template x-for="w in g.subs" :key="w.id">
+                        <div class="mt-1 rounded-md border border-slate-100">
+                            {{-- Sub Task: its department, where it is in the workflow, its progress, "+" --}}
+                            <div class="flex items-center gap-1.5 rounded-t-md bg-slate-50 px-1.5 py-1 text-[12px]">
+                                <span class="h-2 w-2 shrink-0 rounded-full" :style="'background-color:' + deptOf(w.deptId).color" :title="deptOf(w.deptId).name"></span>
+                                <span class="min-w-0 flex-1 break-words font-semibold text-slate-700" x-text="w.name" :title="w.name + ' · ' + deptOf(w.deptId).name"></span>
+                                <span class="shrink-0 text-[10.5px] text-slate-400" x-text="stateWord(w.state)"></span>
+                                <span class="shrink-0 text-[10.5px] tabular-nums text-slate-500" x-show="w.items.length" x-text="w.done + '/' + w.items.length"></span>
+                                <button type="button" @click="clAdd(w.id)" class="shrink-0 rounded px-1 text-sm font-bold leading-none text-blue-600 hover:bg-blue-50" title="เพิ่มรายการในงานนี้" aria-label="เพิ่มรายการ">+</button>
+                            </div>
+                            <template x-for="i in w.items" :key="i.id + (i.expected || '')">
+                              <div>
+                                <label class="group flex cursor-pointer items-start gap-2 px-1.5 py-1 hover:bg-slate-50">
+                                    <input type="checkbox" :checked="i.done" @change="tick(clTask, clCab, i)" class="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-emerald-600">
+                                    <span class="min-w-0 flex-1 break-words text-[13px] leading-snug" :class="i.done ? 'line-through text-slate-400' : 'text-slate-800'" x-text="i.text" :title="i.text + (i.remark ? ' — ' + i.remark : '')"></span>
+                                    <span x-show="i.remark" class="shrink-0 text-[11px]" :title="i.remark">📝</span>
+                                    <span x-show="deptOf(i.deptId).dateLabel && !canEditStage(i.deptId) && i.expected" class="shrink-0 rounded bg-amber-50 px-1 text-[10.5px] text-amber-800" :title="deptOf(i.deptId).dateLabel" x-text="'📦 ' + fmtBE(i.expected)"></span>
+                                    <span class="flex shrink-0 items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                                        <button type="button" @click.prevent="clMove(i, 'up')" class="px-0.5 text-[12px] text-slate-400 hover:text-slate-800" title="ขึ้น" aria-label="ย้ายขึ้น">↑</button>
+                                        <button type="button" @click.prevent="clMove(i, 'down')" class="px-0.5 text-[12px] text-slate-400 hover:text-slate-800" title="ลง" aria-label="ย้ายลง">↓</button>
+                                        <button type="button" @click.prevent="clRename(i)" class="px-0.5 text-[12px] text-slate-400 hover:text-blue-600" title="แก้ชื่อ" aria-label="แก้ชื่อรายการ">✎</button>
+                                        <button type="button" @click.prevent="clRemark(i)" class="px-0.5 text-[12px] text-slate-400 hover:text-blue-600" title="หมายเหตุ" aria-label="หมายเหตุ">📝</button>
+                                        <button type="button" @click.prevent="clDelete(i)" class="rounded px-1 text-[13px] leading-none text-red-600 hover:bg-red-50" title="ลบ" aria-label="ลบรายการ">✕</button>
+                                    </span>
+                                </label>
+                                <p x-show="i.remark" class="-mt-0.5 whitespace-pre-line break-words pb-1 pl-8 pr-1.5 text-[11px] text-slate-500" x-text="'📝 ' + i.remark"></p>
+                                {{-- Settings > การส่งต่องาน: the date this item is expected (e.g. วันของเข้า), for the department that follows --}}
+                                <template x-if="deptOf(i.deptId).dateLabel && canEditStage(i.deptId)">
+                                    <div class="-mt-0.5 flex items-center gap-1.5 pb-1 pl-8 pr-1.5 text-[11px] text-amber-800">
+                                        <span x-text="'📦 ' + deptOf(i.deptId).dateLabel"></span>
+                                        <input type="text" placeholder="dd/mm/yyyy" x-init="dateField($el, () => clItemDate(i.id), (v) => setItemDate(i.id, v), true, 'h-6 w-[6.25rem] !py-0 !pr-2 !text-[11px]')">
+                                        <button type="button" x-show="i.expected" @click="setItemDate(i.id, null)" class="text-slate-400 hover:text-red-600" title="ล้างวันที่" aria-label="ล้างวันที่">✕</button>
+                                    </div>
+                                </template>
+                              </div>
+                            </template>
+                            <p x-show="!w.items.length && cl.adding !== w.id" class="px-1.5 py-1 text-[11px] text-slate-400">ยังไม่มีรายการ</p>
+                            <input x-show="cl.adding === w.id" :id="'cl-draft-' + w.id" x-model="clDraft" type="text" maxlength="255" placeholder="ชื่อรายการ... (Enter เพิ่ม · วางจาก Excel ได้หลายแถว)"
+                                   @keydown.enter.prevent="clCommit()" @keydown.escape.stop.prevent="cl = { ...cl, adding: null }; clDraft = ''" @blur="clCommit()" @paste="clPaste($event, w.id)"
+                                   class="m-1 w-[calc(100%-0.5rem)] rounded-md border-slate-300 px-2 py-1 text-[13px]">
+                        </div>
+                    </template>
+                </div>
+            </template>
+            <p x-show="clGroups().length === 0" class="px-1 py-2.5 text-xs leading-relaxed text-slate-400">ยังไม่มีงานที่จ่ายให้แผนกในตู้นี้</p>
+            {{-- Settings > การส่งต่องาน: the departments passing work to mine, read only (the same rows they tick) --}}
+            <template x-for="l in (clCab.linked || [])" :key="'ln' + l.deptId">
+                <div class="mt-1.5 rounded-md border border-dashed border-slate-300">
+                    <div class="flex items-center gap-1.5 rounded-t-md bg-slate-50 px-1.5 py-1 text-[12px]">
+                        <span class="h-2 w-2 shrink-0 rounded-full" :style="'background-color:' + deptOf(l.deptId).color"></span>
+                        <span class="min-w-0 flex-1 truncate font-semibold text-slate-700" x-text="'ข้อมูลจาก ' + deptOf(l.deptId).name"></span>
+                        <span class="shrink-0 text-[10.5px] text-slate-400">ดูอย่างเดียว</span>
+                        <span class="shrink-0 text-[10.5px] tabular-nums text-slate-500" x-text="l.done + '/' + l.total"></span>
+                    </div>
+                    <template x-for="i in l.items" :key="i.id">
+                        <div class="px-1.5 py-1 text-[12.5px]">
+                            <div class="flex items-center gap-2">
+                                <span class="w-4 shrink-0 text-center" :class="i.done ? 'text-emerald-600' : 'text-slate-300'" x-text="i.done ? '✓' : '○'"></span>
+                                <span class="min-w-0 flex-1 break-words leading-snug" :class="i.done ? 'text-slate-800' : 'text-slate-500'" x-text="i.text" :title="i.text"></span>
+                                <span x-show="i.expected" class="shrink-0 rounded px-1 text-[10.5px]" :class="linkedLate(i) ? 'bg-red-50 font-semibold text-red-600' : 'bg-amber-50 text-amber-800'"
+                                      :title="deptOf(l.deptId).dateLabel || ''" x-text="'📦 ' + fmtBE(i.expected)"></span>
+                                <span x-show="i.received" class="shrink-0 text-[10.5px] font-semibold text-emerald-600" title="แผนกคุณติ๊กรายการนี้แล้ว">✓ แผนกคุณ</span>
+                            </div>
+                            <p x-show="i.remark" class="ml-6 whitespace-pre-line break-words text-[11px] text-slate-500" x-text="'📝 ' + i.remark"></p>
+                        </div>
+                    </template>
+                    <p x-show="!l.items.length" class="px-1.5 py-1 text-[11px] text-slate-400">ยังไม่มีรายการ</p>
+                </div>
+            </template>
         </div>
-        {{-- when one department is in view the "+" lives at the bottom, as on the original page --}}
-        <button type="button" x-show="dept && cl.adding !== dept" @click="clAdd(dept)" class="mt-1.5 self-start px-0.5 py-1 text-[13px] text-blue-600 hover:underline">+ เพิ่มรายการ</button>
     </div>
 </template>

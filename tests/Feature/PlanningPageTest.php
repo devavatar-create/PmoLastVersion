@@ -75,7 +75,7 @@ class PlanningPageTest extends TestCase
         $this->assertSame('2026-10-31', $t['date']);
         $this->assertSame('2026-10-01', $t['startDate']);
         $this->assertSame('urgent', $t['priority']);
-        $this->assertSame('s_doing', $t['statusId']);
+        $this->assertSame('pmo_in_progress', $t['statusId'], "with no project status picked the page shows PMO's own project status");
         $this->assertSame(['hello'], array_column($t['comments'], 'text'), 'the Activity box holds only the discussion');
         $this->assertSame(route('projects.activity-tree', $this->project), $t['logUrl'], 'a PMO role gets the change-log tree, separate from the Activity box');
 
@@ -93,22 +93,34 @@ class PlanningPageTest extends TestCase
         $this->assertFalse($stages['d_'.$this->wiring->id]['done']);
     }
 
-    public function test_status_mapping_is_worst_first(): void
+    public function test_each_department_has_its_own_status_and_the_project_keeps_pmos(): void
     {
         $svc = app(PlanningBoard::class);
         $pm = $this->user($this->busbar, 'project_manager');
+        $stage = fn () => collect($svc->build($pm)['boards']['pmo']['tasks'][0]['deptStages'])->keyBy('deptId');
+        $wir = 'd_'.$this->wiring->id;
+        $bus = 'd_'.$this->busbar->id;
 
         $this->seedCabinet('COMPLETED', 'COMPLETED');
-        $this->assertSame('s_done', $svc->build($pm)['boards']['pmo']['tasks'][0]['statusId']);
+        $this->assertSame(['s_done', 's_done'], [$stage()[$bus]['statusId'], $stage()[$wir]['statusId']]);
+        $this->assertSame('pmo_in_progress', $svc->build($pm)['boards']['pmo']['tasks'][0]['statusId'], "all departments done does not change the project's status");
 
         CabinetSubtask::query()->where('department_id', $this->wiring->id)->update(['assignment_status' => 'ACCEPTED']);
-        $this->assertSame('s_review', $svc->build($pm)['boards']['pmo']['tasks'][0]['statusId']);
+        $this->assertSame(['s_done', 's_review'], [$stage()[$bus]['statusId'], $stage()[$wir]['statusId']]);
+
+        CabinetSubtask::query()->where('department_id', $this->wiring->id)->update(['assignment_status' => 'IN_PROGRESS']);
+        $this->assertSame('s_doing', $stage()[$wir]['statusId']);
 
         CabinetSubtask::query()->where('department_id', $this->wiring->id)->update(['assignment_status' => 'ASSIGNED']);
-        $this->assertSame('s_todo', $svc->build($pm)['boards']['pmo']['tasks'][0]['statusId'], 'one finished + one still waiting is waiting, not done');
+        $this->assertSame('s_todo', $stage()[$wir]['statusId']);
 
         CabinetSubtask::query()->where('department_id', $this->wiring->id)->update(['due_date' => '2026-10-01']);   // before "today"
-        $this->assertSame('s_fail', $svc->build($pm)['boards']['pmo']['tasks'][0]['statusId']);
+        $this->assertSame(['s_done', 's_fail'], [$stage()[$bus]['statusId'], $stage()[$wir]['statusId']], 'late is per department');
+        $this->assertFalse($stage()[$wir]['manualStatus']);
+
+        $this->project->update(['status' => 'on_hold']);
+        $this->assertSame('pmo_on_hold', $svc->build($pm)['boards']['pmo']['tasks'][0]['statusId']);
+        $this->assertContains('pmo_on_hold', array_column($svc->build($pm)['boards']['pmo']['pmoStatusList'], 'id'));
     }
 
     public function test_a_department_user_only_receives_their_own_departments_work(): void

@@ -120,12 +120,15 @@ class SettingsHubTest extends TestCase
         $this->assertSame(1, $this->unread($pm), 'progress switched off: "started" is not delivered');
 
         $svc->complete($s->fresh(), $worker);
-        $this->assertSame(2, $this->unread($pm), 'completed is still on');
+        $this->assertSame(1, $this->unread($pm), 'everything about one project is one notice');
+        $this->assertStringContainsString('Busbar เสร็จ 1', $pm->fresh()->notifications[0]->data['body'], 'completed is still on');
+        $this->assertStringNotContainsString('เริ่มงาน', $pm->fresh()->notifications[0]->data['body'], 'progress is off');
 
         $pm->notificationPreference()->update(['enabled' => false]);
         $s2 = $this->subtask($this->busbar, 'ASSIGNED');
         $svc->accept($s2->fresh(), $worker);
-        $this->assertSame(2, $this->unread($pm), 'master switch off: nothing arrives');
+        $this->assertSame(1, $this->unread($pm), 'master switch off: nothing arrives');
+        $this->assertStringNotContainsString('Busbar รับงาน 2', $pm->fresh()->notifications[0]->data['body']);
     }
 
     public function test_only_my_department_skips_other_departments_news_but_never_the_urgent_kind(): void
@@ -249,7 +252,7 @@ class SettingsHubTest extends TestCase
         $this->assertSame('#abcdef', $dept['color'], 'the board uses the colour chosen in Settings');
     }
 
-    public function test_a_department_that_sees_everything_reads_all_work_but_only_moves_its_own_dates(): void
+    public function test_a_department_that_sees_everything_reads_all_work_but_moves_no_dates(): void
     {
         $this->busbar->update(['sees_all' => true]);
         $mine = $this->subtask($this->busbar, 'ACCEPTED');
@@ -265,8 +268,8 @@ class SettingsHubTest extends TestCase
         $sync = app(PlanningSync::class);
         $this->assertFalse($sync->apply($member, [$due($this->wiring)])[0]['ok'], "cannot move another department's date");
         $this->assertSame('2026-10-20', $theirs->fresh()->due_date->format('Y-m-d'));
-        $this->assertTrue($sync->apply($member, [$due($this->busbar)])[0]['ok']);
-        $this->assertSame('2026-10-25', $mine->fresh()->due_date->format('Y-m-d'));
+        $this->assertFalse($sync->apply($member, [$due($this->busbar)])[0]['ok'], 'dates are Admin / PM only');
+        $this->assertSame('2026-10-20', $mine->fresh()->due_date->format('Y-m-d'));
     }
 
     // ---- extra fields per department ----
@@ -386,8 +389,11 @@ class SettingsHubTest extends TestCase
         $this->actingAs($this->user($this->busbar))->get(route('settings.statuses.edit'))->assertStatus(403);
     }
 
-    public function test_templates_live_under_settings_with_the_same_access_as_before(): void
+    public function test_templates_live_under_settings_for_the_roles_that_may_open_them(): void
     {
+        $this->actingAs($this->user($this->busbar))->get(route('cabinet-templates.index'))->assertForbidden();   // off for a department by default
+        $this->actingAs($this->user($this->busbar))->get(route('settings.notifications.edit'))->assertDontSee('เทมเพลตตู้/เช็คลิสต์');
+        \App\Models\AppSetting::put('department_permissions', [(string) $this->busbar->id => ['page.templates' => true]]);   // Settings > สิทธิ์การใช้งาน
         $member = $this->user($this->busbar);
 
         $html = $this->actingAs($member)->get(route('cabinet-templates.index'))->assertOk()->getContent();
@@ -400,11 +406,27 @@ class SettingsHubTest extends TestCase
     public function test_a_department_that_sees_everything_can_export_every_department(): void
     {
         $this->busbar->update(['sees_all' => true]);
+        \App\Models\AppSetting::put('department_permissions', [(string) $this->busbar->id => ['page.export' => true]]);   // Export CSV is off for a department by default
         $this->subtask($this->wiring, 'ACCEPTED');
         $q = ['from' => '2026-10-01', 'to' => '2026-10-31', 'department_id' => 'all'];
 
         $csv = $this->actingAs($this->user($this->busbar))->get(route('my-department.export', $q))->assertOk()->streamedContent();
         $this->assertStringContainsString('Wiring', $csv, "the board's Export CSV works for them too");
         $this->actingAs($this->user($this->wiring))->get(route('my-department.export', $q))->assertForbidden();
+    }
+
+    /** Every page with the settings tab bar uses the same width, so switching tabs never moves the bar or the content edge. */
+    public function test_every_settings_page_uses_the_full_width(): void
+    {
+        $pages = 0;
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(resource_path('views'))) as $file) {
+            $html = $file->isFile() ? file_get_contents($file->getPathname()) : '';
+            if (! str_contains($html, '<x-settings-nav />')) {
+                continue;
+            }
+            $pages++;
+            $this->assertMatchesRegularExpression('#<div class="max-w-none mx-auto[^"]*">[^\n]*\s*<x-settings-nav />#', $html, $file->getPathname());   // full width, every one
+        }
+        $this->assertGreaterThanOrEqual(18, $pages);
     }
 }

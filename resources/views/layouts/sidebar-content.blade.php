@@ -8,10 +8,11 @@
 
 <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
     @foreach ([
-        ['route' => 'dashboard', 'label' => 'แดชบอร์ด', 'icon' => 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'],
-        ['route' => 'planning.board', 'label' => 'งานแผนกของฉัน', 'icon' => 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'],
-        ['route' => 'projects.index', 'label' => 'โครงการ', 'icon' => 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+        ['route' => 'dashboard', 'perm' => 'page.dashboard', 'label' => 'แดชบอร์ด', 'icon' => 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'],
+        ['route' => 'planning.board', 'perm' => 'page.planning', 'label' => 'งานแผนกของฉัน', 'icon' => 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'],
+        ['route' => 'projects.index', 'perm' => 'page.projects', 'label' => 'โครงการ', 'icon' => 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
     ] as $item)
+        @continue (! auth()->user()?->allows($item['perm']))   {{-- Settings > สิทธิ์การใช้งาน --}}
         <a href="{{ route($item['route']) }}" title="{{ $item['label'] }}" aria-label="{{ $item['label'] }}"
            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
                   {{ request()->routeIs($item['route'].'*') ? 'bg-blue-600/15 text-blue-200' : 'text-slate-300 hover:bg-white/5 hover:text-white' }}">
@@ -21,7 +22,7 @@
     @endforeach
 
     {{-- Admin/PM only - the same role gate SubtaskAssignmentService enforces server-side. --}}
-    @if (auth()->user()?->canDispatchWork())
+    @if (auth()->user()?->canDispatchWork() && auth()->user()->allows('page.assignments'))
         <a href="{{ route('assignments.index') }}" title="จ่ายงาน" aria-label="จ่ายงาน"
            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
                   {{ request()->routeIs('assignments.*') ? 'bg-blue-600/15 text-blue-200' : 'text-slate-300 hover:bg-white/5 hover:text-white' }}">
@@ -30,26 +31,14 @@
         </a>
     @endif
 
-    {{-- Inbox for the public request form - same PMO roles that dispatch work; badge = requests waiting for a decision. --}}
-    @if (auth()->user()?->canDispatchWork())
-        @php $pendingRequests = \App\Models\ProjectRequest::where('status', \App\Models\ProjectRequest::STATUS_PENDING)->count(); @endphp
-        <a href="{{ route('project-requests.index') }}" title="คำขอโครงการ" aria-label="คำขอโครงการ"
-           class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
-                  {{ request()->routeIs('project-requests.*') ? 'bg-blue-600/15 text-blue-200' : 'text-slate-300 hover:bg-white/5 hover:text-white' }}">
-            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 8l9 6 9-6M5 6h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
-            <span class="sidebar-label">คำขอโครงการ</span>
-            @if ($pendingRequests > 0)
-                <span class="sidebar-label ml-auto min-w-[20px] rounded-full bg-red-500 px-1.5 text-center text-[11px] font-semibold leading-5 text-white">{{ $pendingRequests }}</span>
-            @endif
-        </a>
-    @endif
-
+    @if (auth()->user()?->allows('page.cabinets'))
     <a href="{{ route('cabinets.index') }}" title="ตู้ไฟฟ้า" aria-label="ตู้ไฟฟ้า"
        class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
               {{ request()->routeIs('cabinets.*') ? 'bg-blue-600/15 text-blue-200' : 'text-slate-300 hover:bg-white/5 hover:text-white' }}">
         <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zM8 7h8M8 11h8M8 15h4" /></svg>
         <span class="sidebar-label">ตู้ไฟฟ้า</span>
     </a>
+    @endif
 
     @if (auth()->user()?->canManageTrash())
         <a href="{{ route('trash.index') }}" title="ถังขยะ" aria-label="ถังขยะ"

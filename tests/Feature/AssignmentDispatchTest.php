@@ -83,7 +83,7 @@ class AssignmentDispatchTest extends TestCase
         $waiting = $this->subtask('P-1', 'MO-1', 'Wire Panel', $this->busbar, 'ASSIGNED');
 
         $html = $this->actingAs($this->user(User::ROLE_ADMIN))->get(route('assignments.index'))
-            ->assertOk()->assertSee('รับงานโดย Somchai · 28/09/2026 09:15')
+            ->assertOk()->assertSee('รับงานโดย Somchai · 28/09/2569 09:15')
             ->getContent();
 
         // The not-yet-accepted row's placeholder stays empty - no "accepted by" text for it.

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CabinetSubtask;
 use App\Models\DateLimitRule;
 use App\Models\Department;
+use App\Services\ProgressService;
 use App\Services\SubtaskAssignmentService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -48,7 +49,11 @@ class CabinetSubtaskController extends Controller
         }
         unset($data['department_id']);
 
+        $dueBefore = $cabinetSubtask->due_date?->format('Y-m-d');
         $cabinetSubtask->update($data);
+        if (array_key_exists('due_date', $data) && ($data['due_date'] ?: null) !== $dueBefore) {
+            app(\App\Services\NotificationService::class)->dueChanged(collect([$cabinetSubtask->fresh('cabinetTask.cabinet.project')]), $request->user());
+        }
 
         // Cabinet Quick Detail Panel's Assignment Modal submits this same
         // endpoint via fetch() (department + dates + remark in one request,
@@ -56,6 +61,20 @@ class CabinetSubtaskController extends Controller
         // JSON reply to update in place without a reload - respond() already
         // falls back to back()->with(...) for the existing non-JSON form post.
         return $this->respond($request, $cabinetSubtask, 'บันทึกงานย่อยเรียบร้อยแล้ว');
+    }
+
+    /**
+     * Admin / PM (route: pmo): this cabinet's Sub Task goes to the trash with its Checklists. Only this cabinet's copy - the
+     * template it came from is never touched.
+     */
+    public function destroy(CabinetSubtask $cabinetSubtask, ProgressService $progress)
+    {
+        $task = $cabinetSubtask->cabinetTask;
+        $name = $cabinetSubtask->name;
+        $cabinetSubtask->delete();   // a closed project refuses (GuardsClosedProject -> flash error)
+        $progress->recalculateTask($task->fresh());
+
+        return redirect()->route('cabinets.show', $task->cabinet_id)->with('success', "ลบ Sub Task \"{$name}\" แล้ว — กู้คืนได้จากถังขยะ (เทมเพลตไม่เปลี่ยน)");
     }
 
     public function updateDepartment(Request $request, CabinetSubtask $cabinetSubtask)

@@ -178,6 +178,7 @@ class SubtaskAssignmentTest extends TestCase
     public function test_only_admin_or_pm_can_change_department(): void
     {
         $notPrivileged = $this->user($this->engineering, 'Production Lead', User::ROLE_PRODUCTION);
+        $this->cabinet->project->assignees()->attach($notPrivileged->id);   // sees the project (in charge of it) - the department rule must still stop it
 
         // Dedicated endpoint, on an UNASSIGNED sub task (no lock in play - permission alone must stop it).
         $unassigned = $this->subtask(null);
@@ -191,7 +192,7 @@ class SubtaskAssignmentTest extends TestCase
         $assigned = $this->subtask($this->busbar);
         $this->actingAs($notPrivileged)
             ->put(route('cabinet-subtasks.update', $assigned), ['status' => 'not_started', 'department_id' => $this->wiring->id])
-            ->assertSessionHas('error', 'เฉพาะผู้ดูแลระบบ (Admin) หรือ Project Manager เท่านั้นที่มีสิทธิ์เปลี่ยนแผนก');
+            ->assertForbidden();   // the whole edit form is Admin / PM only now (route middleware 'pmo')
         $this->assertSame($this->busbar->id, $assigned->fresh()->department_id);
 
         // An admin (even from another department) may.
@@ -279,6 +280,7 @@ class SubtaskAssignmentTest extends TestCase
         // only the department dropdown itself should be gated by canDispatchWork().
         $member = $this->user($this->busbar);
         $editable = $this->subtask($this->wiring);
+        $this->subtask($this->busbar);   // Busbar has work here too, so the page opens for them
 
         $html = $this->actingAs($member)->get(route('cabinets.show', $this->cabinet))->assertOk()->getContent();
 

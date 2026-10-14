@@ -41,6 +41,19 @@ use Illuminate\Validation\ValidationException;
  */
 class PlanningSync
 {
+    use Concerns\PlanningSyncExtras;
+
+    /** @var list<string> warnings collected while one operation runs, added to its answer */
+    private array $notes = [];
+
+    /** Project id the last create / copy / import / restore produced (the page opens it). */
+    private ?int $created = null;
+
+    public function created(): ?int
+    {
+        return $this->created;
+    }
+
     private const STEP_FROM = [
         'accept' => CabinetSubtask::ASSIGNMENT_ASSIGNED,
         'start' => CabinetSubtask::ASSIGNMENT_ACCEPTED,
@@ -71,13 +84,16 @@ class PlanningSync
         $type = (string) ($op['type'] ?? '');
 
         try {
-            $message = DB::transaction(fn () => match ($type) {
+            $this->notes = [];
+            // one notice per department / project for the work this operation hands out (sent only if it succeeds)
+            $message = $this->notifications->batch(fn () => DB::transaction(fn () => match ($type) {
                 'checklist' => $this->checklist($user, $op),
                 'checklist_add' => $this->checklistAdd($user, $op),
                 'checklist_delete' => $this->checklistDelete($user, $op),
                 'comment' => $this->comment($user, $op),
                 'project' => $this->project($user, $op),
                 'stage_due' => $this->stageDue($user, $op),
+                'stage_dates' => $this->stageDates($user, $op),
                 'cabinet_due' => $this->cabinetDue($user, $op, false),
                 'cabinet_dept_due' => $this->cabinetDue($user, $op, true),
                 'stage_field' => $this->stageField($user, $op),
@@ -88,14 +104,35 @@ class PlanningSync
                 'cabinet_rename' => $this->cabinetRename($user, $op),
                 'cabinet_delete' => $this->cabinetDelete($user, $op),
                 'stage_add' => $this->stageAdd($user, $op),
+                'subtask_assign' => $this->subtaskAssign($user, $op),
+                'cabinet_info' => $this->cabinetInfo($user, $op),
+                'subtask_info' => $this->subtaskInfo($user, $op),
+                'project_shift' => $this->projectShift($user, $op),
                 'stage_remove' => $this->stageRemove($user, $op),
                 'board_set' => $this->boardSet($user, $op),
+                'project_create' => $this->projectCreate($user, $op),
+                'project_duplicate' => $this->projectDuplicate($user, $op),
+                'project_restore' => $this->projectRestore($user, $op),
+                'assignees_set' => $this->assigneesSet($user, $op),
+                'cabinet_status' => $this->cabinetStatus($user, $op),
+                'stage_status' => $this->stageStatus($user, $op),
+                'checklist_rename' => $this->checklistRename($user, $op),
+                'checklist_remark' => $this->checklistRemark($user, $op),
+                'checklist_date' => $this->checklistDate($user, $op),
+                'checklist_date_all' => $this->checklistDateAll($user, $op),
+                'checklist_move' => $this->checklistMove($user, $op),
+                'comment_edit' => $this->commentEdit($user, $op),
+                'comment_delete' => $this->commentDelete($user, $op),
+                'alert_ack' => $this->alertAck($user, $op),
                 'stage_done' => $this->stageDone($user, $op),
                 'stage_step' => $this->stageStep($user, $op),
                 'delete' => $this->delete($user, $op),
                 'unsupported' => throw new PlanningRejected((string) ($op['what'] ?? 'การแก้ไขนี้ยังไม่รองรับในหน้านี้')),
                 default => throw new PlanningRejected('ไม่รู้จักการแก้ไขนี้'),
-            });
+            }));
+
+            // things the person should know although it worked (e.g. a department with nobody in it)
+            $message = $this->notes ? trim(($message ? $message.' · ' : '').implode(' · ', array_unique($this->notes))) : $message;
 
             return ['ok' => true, 'type' => $type, 'message' => $message];
         } catch (PlanningRejected|AssignmentException|ProjectLockedException $e) {
@@ -200,7 +237,11 @@ class PlanningSync
     private function checklistAdd(User $user, array $op): ?string
     {
         $project = $this->projectFor($user, $op['taskId'] ?? null);
-        $subtask = $this->cabinetDeptSubtask($user, $project, $op['cabinetId'] ?? null, $op['deptId'] ?? null);
+        // into the Sub Task picked in the checklist window; older pages send only the cabinet + department (its first Sub Task)
+        $subtask = ! empty($op['subtaskId'])
+            ? WorkScope::projectSubtasks($project, $user)->whereHas('cabinetTask', fn ($q) => $q->where('cabinet_id', $this->id($op['cabinetId'] ?? null, 'c')))
+                ->find($this->id($op['subtaskId'], 's')) ?? throw new PlanningRejected('ไม่พบงานย่อยนี้ในตู้นี้')
+            : $this->cabinetDeptSubtask($user, $project, $op['cabinetId'] ?? null, $op['deptId'] ?? null);
         $text = trim((string) ($op['text'] ?? ''));
 
         if ($text === '') {
@@ -288,7 +329,16 @@ class PlanningSync
         }
         $text = mb_substr($text, 0, 2000);
 
-        $this->lastNote = ActivityLog::record($project->id, $user->id, $project, 'note', $text);
+        // an alert to a department keeps who acknowledged it; a reply points at the comment it answers
+        $changes = [];
+        if (! empty($op['alertDept']) && $user->canDispatchWork() && ($alertDept = Department::find($this->id($op['alertDept'], 'd_')))) {
+            $changes += ['alert_department_id' => $alertDept->id, 'acks' => []];
+        }
+        if (! empty($op['replyTo']) && is_string($op['replyTo']) && preg_match('/^a(\d+)$/', $op['replyTo'], $m)
+            && ActivityLog::where('project_id', $project->id)->where('action', 'note')->whereKey((int) $m[1])->exists()) {
+            $changes['reply_to'] = (int) $m[1];
+        }
+        $this->lastNote = ActivityLog::record($project->id, $user->id, $project, 'note', $text, $changes);
 
         $notes = [];
 
@@ -297,13 +347,15 @@ class PlanningSync
                 $notes[] = 'ส่งแจ้งเตือนแผนกได้เฉพาะ Admin / Project Manager';
             } else {
                 $dept = Department::find($this->id($op['alertDept'], 'd_')) ?? throw new PlanningRejected('ไม่พบแผนกที่จะแจ้งเตือน');
-                $notes[] = "ส่งแจ้งเตือนถึงแผนก {$dept->name} ".$this->notifications->projectAlert($project, $dept, $user, $text).' คนแล้ว';
+                $n = $this->notifications->projectAlert($project, $dept, $user, $text);
+                $notes[] = $n ? "ส่งแจ้งเตือนถึงแผนก {$dept->name} {$n} คนแล้ว" : "⚠️ แผนก {$dept->name} ยังไม่มีผู้ใช้ในระบบ — ไม่มีใครได้รับแจ้งเตือนนี้";
             }
         }
 
         if (! empty($op['mentions']) && is_array($op['mentions'])) {
             [$targets, $skipped] = $this->mentionTargets($user, $project, $op['mentions']);
             $sent = $targets->sum(fn (User $t) => $this->notifications->mentioned($project, $user, $t, $text));
+            $told = $targets->pluck('id')->all();
             if ($sent) {
                 $notes[] = "แจ้งเตือนผู้ถูกแท็ก {$sent} คน";
             }
@@ -316,11 +368,16 @@ class PlanningSync
             $notes[] = 'รูป/ไฟล์แนบยังไม่รองรับในหน้านี้';
         }
 
+        // everyone else following the project hears about the new comment / reply (not those already tagged / alerted)
+        $skip = array_merge($told ?? [], isset($dept) ? User::where('department_id', $dept->id)->pluck('id')->all() : []);
+        $this->notifications->commented($project, $user, $this->lastNote, $skip);
+
         return $notes ? 'บันทึกคอมเมนต์แล้ว · '.implode(' · ', $notes) : null;
     }
 
     private function project(User $user, array $op): ?string
     {
+        $this->requirePmo($user, 'แก้ข้อมูลและวันที่ของโครงการ');
         $project = $this->projectFor($user, $op['taskId'] ?? null);
         $f = is_array($op['fields'] ?? null) ? $op['fields'] : [];
 
@@ -335,11 +392,11 @@ class PlanningSync
             $map['priority'] = self::PRIORITY[$f['priority']] ?? throw new PlanningRejected('ระดับความสำคัญไม่ถูกต้อง');
         }
         if (array_key_exists('statusId', $f)) {
-            // a status picked by hand ('' = back to the one worked out from the departments' progress)
+            // the project's status, picked by Admin / PM ('' = none: the page then shows PMO's own project status)
             $status = $f['statusId'] === '' || $f['statusId'] === null ? null
                 : (is_string($f['statusId']) ? BoardStatus::fromPageId($f['statusId']) : null) ?? throw new PlanningRejected('สถานะไม่ถูกต้อง');
             $project->forceFill(['board_status_id' => $status?->id])->save();
-            ActivityLog::record($project->id, $user->id, $project, 'updated', 'ตั้งสถานะบน Planning เป็น '.($status?->name ?? 'อัตโนมัติ'));
+            ActivityLog::record($project->id, $user->id, $project, 'updated', 'ตั้งสถานะโครงการเป็น '.($status?->name ?? 'ตามสถานะ PMO'));
         }
         if (array_key_exists('startDate', $f)) {
             $map['start_date'] = $this->date($f['startDate']);
@@ -347,15 +404,35 @@ class PlanningSync
         if (array_key_exists('date', $f)) {
             $map['due_date'] = $this->date($f['date']);
         }
+        // the project's own record (customer, PO, PM, ...): Admin / PM only, like the dispatch side of PMO
+        $info = ['customer' => 'customer_name', 'customerPhone' => 'customer_phone', 'poNo' => 'po_no', 'soNo' => 'sales_order_no', 'owner' => 'project_owner', 'salesPerson' => 'sales_person',
+            'managerId' => 'project_manager_id', 'paymentTerms' => 'payment_terms', 'jobTypeId' => 'job_type_id', 'pmoStatus' => 'status',
+            'contractValue' => 'contract_value', 'margin' => 'margin'];
+        if (array_intersect_key($f, $info)) {
+            $this->requirePmo($user, 'แก้ข้อมูลโครงการ (ลูกค้า / PO / PM / สถานะ PMO)');
+            // what this person may not see, they do not change (Settings > สิทธิ์การใช้งาน)
+            if (! $user->allows('data.finance') && array_intersect_key($f, ['contractValue' => 1, 'margin' => 1])) {
+                throw new PlanningRejected('คุณไม่มีสิทธิ์ดูหรือแก้ข้อมูลการเงินของโครงการ');
+            }
+            if (! $user->allows('data.contact') && array_key_exists('customerPhone', $f)) {
+                throw new PlanningRejected('คุณไม่มีสิทธิ์ดูหรือแก้ข้อมูลติดต่อลูกค้า');
+            }
+            foreach ($info as $key => $column) {
+                if (array_key_exists($key, $f)) {
+                    $v = is_string($f[$key]) ? trim($f[$key]) : $f[$key];
+                    $map[$column] = $v === '' ? null : $v;
+                }
+            }
+        }
         if ($map) {
-            $this->editor->update($project, $map);
+            $this->editor->update($project, $map);   // same validation as the project form; the model's own guards (closing a project) apply
         }
 
         return null;
     }
 
     /** Changes the due date of every still-open Sub Task in $subtasks, after the date-limit rules say it is allowed. */
-    private function moveDue(Collection $subtasks, ?string $due): void
+    private function moveDue(Collection $subtasks, ?string $due, User $user): void
     {
         $open = $this->open($subtasks);
         if ($open->isEmpty()) {
@@ -375,18 +452,54 @@ class PlanningSync
             }
             $s->update($change);
         }
+        $this->notifications->dueChanged($open, $user);   // the departments whose dates moved hear it
+    }
+
+    /**
+     * One start - end range for ALL of a department's open work in the project (the department decides the order inside it;
+     * PMO only watches the end date). Date-limit rules hold; finished work keeps its dates.
+     */
+    private function stageDates(User $user, array $op): ?string
+    {
+        $this->requirePmo($user, 'กำหนดช่วงวันของแผนก');
+        $project = $this->projectFor($user, $op['taskId'] ?? null);
+        ProjectLock::assertOpen($project->id);
+        [$start, $due] = [$this->date($op['start'] ?? null), $this->date($op['due'] ?? null)];
+        if ($start && $due && $due < $start) {
+            throw new PlanningRejected('วันส่งต้องไม่ก่อนวันเริ่ม');
+        }
+        $open = $this->open($this->deptSubtasks($project, $user, $op['deptId'] ?? null));
+        if ($open->isEmpty()) {
+            throw new PlanningRejected('ไม่มีงานที่แก้วันได้ (เสร็จแล้วหรือยังไม่ได้จ่ายงาน)');
+        }
+        foreach ($open as $s) {
+            if ($due && ($message = DateLimitRule::violationFor($s->cabinetTask->cabinet_id, $s->department_id, $due))) {
+                throw new PlanningRejected($message);
+            }
+        }
+        $moved = $open->filter(fn ($s) => $s->due_date?->format('Y-m-d') !== $due);
+        foreach ($open as $s) {
+            $s->update(['start_date' => $start, 'due_date' => $due]);
+        }
+        if ($moved->isNotEmpty()) {
+            $this->notifications->dueChanged($moved->each->refresh(), $user);
+        }
+
+        return null;
     }
 
     private function stageDue(User $user, array $op): ?string
     {
+        $this->requirePmo($user, 'แก้วันกำหนดส่งของแผนก');
         $project = $this->projectFor($user, $op['taskId'] ?? null);
-        $this->moveDue($this->deptSubtasks($project, $user, $op['deptId'] ?? null)->when(! $user->canDispatchWork(), fn ($c) => $c->where('department_id', $user->department_id)), $this->date($op['due'] ?? null));
+        $this->moveDue($this->deptSubtasks($project, $user, $op['deptId'] ?? null)->when(! $user->canDispatchWork(), fn ($c) => $c->where('department_id', $user->department_id)), $this->date($op['due'] ?? null), $user);
 
         return null;
     }
 
     private function cabinetDue(User $user, array $op, bool $perDept): ?string
     {
+        $this->requirePmo($user, 'แก้วันกำหนดส่งของตู้');
         $project = $this->projectFor($user, $op['taskId'] ?? null);
         $cabinetId = $this->id($op['cabinetId'] ?? null, 'c');
 
@@ -396,7 +509,7 @@ class PlanningSync
             ->when($perDept, fn ($q) => $q->where('department_id', $this->id($op['deptId'] ?? null, 'd_')))
             ->with('cabinetTask.cabinet')->get();
 
-        $this->moveDue($subtasks, $this->date($op['due'] ?? null));
+        $this->moveDue($subtasks, $this->date($op['due'] ?? null), $user);
 
         return null;
     }
@@ -481,6 +594,7 @@ class PlanningSync
 
     private function labelsSet(User $user, array $op): ?string
     {
+        $this->requirePmo($user, 'ติด / ถอดแท็ก');
         $project = $this->projectFor($user, $op['taskId'] ?? null);
         $ids = collect(is_array($op['labels'] ?? null) ? $op['labels'] : [])->map(fn ($l) => is_string($l) && preg_match('/^l(\d+)$/', $l, $m) ? (int) $m[1] : null)->filter()->unique();
         $valid = BoardLabel::whereIn('id', $ids)->pluck('id');
@@ -533,13 +647,30 @@ class PlanningSync
             throw new PlanningRejected("เลข MO {$mo} มีอยู่แล้ว");
         }
 
-        $cabinet = $project->cabinets()->create(['mo_no' => $mo, 'cabinet_name' => $name, 'sequence' => (int) $project->cabinets()->max('sequence') + 1]);
-        // same as the Cabinet screen: the default template gives it its tasks / sub tasks / checklists
-        if ($template = CabinetTemplate::with('taskTemplates.subtaskTemplates.checklistTemplates')->where('is_default', true)->first()) {
+        [$cabStart, $cabDue] = [$this->date($op['startDate'] ?? null), $this->date($op['dueDate'] ?? null)];
+        if ($cabStart && $cabDue && $cabDue < $cabStart) {
+            throw new PlanningRejected('วันครบกำหนดของตู้ต้องไม่ก่อนวันเริ่ม');
+        }
+        $cabinet = $project->cabinets()->create(['mo_no' => $mo, 'cabinet_name' => $name, 'start_date' => $cabStart, 'due_date' => $cabDue, 'sequence' => (int) $project->cabinets()->max('sequence') + 1]);
+        // its tasks / sub tasks / checklists come from the chosen template ('none' = an empty cabinet; not given = the default one)
+        $raw = $op['templateId'] ?? null;
+        $template = $raw === 'none' ? null : CabinetTemplate::with('taskTemplates.subtaskTemplates.checklistTemplates')
+            ->when($raw !== null && $raw !== '', fn ($q) => $q->whereKey((int) $raw), fn ($q) => $q->where('is_default', true))->first();
+        if ($raw !== null && $raw !== '' && $raw !== 'none' && ! $template) {
+            throw new PlanningRejected('ไม่พบเทมเพลตนี้');
+        }
+        if ($template) {
             app(CabinetTemplateService::class)->applyToCabinet($cabinet, $template);
         }
 
-        return null;
+        // hand the template's sub tasks to the departments picked in the same window (the normal dispatch: logged, the department is told)
+        $assign = is_array($op['assign'] ?? null) ? $op['assign'] : [];
+        $sent = 0;
+        foreach (CabinetSubtask::with('cabinetTask')->whereHas('cabinetTask', fn ($q) => $q->where('cabinet_id', $cabinet->id))->get() as $subtask) {
+            $sent += $this->dispatchTo($user, $subtask, $assign[(string) $subtask->cabinet_subtask_template_id] ?? null);
+        }
+
+        return "เพิ่มตู้ {$cabinet->mo_no} แล้ว".($sent ? " · จ่ายงาน {$sent} งาน" : '');
     }
 
     private function cabinetRename(User $user, array $op): ?string
@@ -572,6 +703,24 @@ class PlanningSync
         return 'ลบตู้ '.$cabinet->mo_no.' แล้ว (กู้คืนได้ที่ถังขยะ)';
     }
 
+    /** Hands sub tasks of this project that have no department yet (e.g. from a template) to departments: { s12: 'd_5', ... }. */
+    private function subtaskAssign(User $user, array $op): ?string
+    {
+        $this->requirePmo($user, 'จ่ายงาน');
+        $project = $this->projectFor($user, $op['taskId'] ?? null);
+        ProjectLock::assertOpen($project->id);
+        $assign = is_array($op['assign'] ?? null) ? $op['assign'] : [];
+        $sent = 0;
+
+        foreach ($assign as $key => $value) {
+            $subtask = CabinetSubtask::with('cabinetTask')->whereHas('cabinetTask.cabinet', fn ($q) => $q->where('project_id', $project->id))->find($this->id((string) $key, 's'))
+                ?? throw new PlanningRejected('ไม่พบงานย่อยนี้ในโครงการ');
+            $sent += $this->dispatchTo($user, $subtask, $value);
+        }
+
+        return $sent ? "จ่ายงานแล้ว {$sent} งาน" : null;
+    }
+
     /** Adds a department to the project: every cabinet gets one Sub Task "งาน <แผนก>" handed to it (the normal dispatch: logged, the department is told). */
     private function stageAdd(User $user, array $op): ?string
     {
@@ -595,7 +744,7 @@ class PlanningSync
                 'name' => "งาน {$department->name}", 'status' => 'not_started', 'progress' => 0,
                 'sequence' => (int) $task->subtasks()->max('sequence') + 1,
             ] + CabinetSubtask::initialAssignment(null));
-            $this->assignments->changeDepartment($subtask, $department->id, $user);
+            $this->dispatchTo($user, $subtask->load('cabinetTask'), ['dept' => 'd_'.$department->id, 'start' => $op['start'] ?? null, 'due' => $op['due'] ?? null]);
         }
 
         return "เพิ่มแผนก {$department->name} เข้าโครงการแล้ว";

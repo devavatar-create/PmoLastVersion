@@ -43,7 +43,7 @@ class ProjectModal
             'project' => $this->block($project, $user),
             'departments' => $this->departmentChips($items),
             'cabinets' => $this->cabinets($items),
-            'activity' => $this->feed($project, $user)->map(fn ($l) => $this->activityItem($l))->values(),
+            'activity' => $user->allows('data.comments') ? $this->feed($project, $user)->map(fn ($l) => $this->activityItem($l))->values() : collect(),   // Settings > สิทธิ์การใช้งาน
             'alert_departments' => $user->canDispatchWork() ? Department::where('is_active', true)->orderBy('name')->get(['id', 'name']) : [],
         ];
     }
@@ -83,8 +83,8 @@ class ProjectModal
             'user_name' => $log->user?->name ?? 'ระบบ',
             'action' => $log->action,
             'is_note' => $log->action === 'note',
-            'description' => $log->description,
-            'created_at' => $log->created_at?->format('d/m/Y H:i'),
+            'description' => $log->descriptionFor(auth()->user()),   // money / phone values masked for whom Settings > สิทธิ์การใช้งาน hides them
+            'created_at' => $log->created_at?->thaiDateTime(),
             'attachments' => $log->attachments->map(fn ($a) => ['name' => $a->original_name, 'url' => $a->url, 'size' => $a->size_for_humans])->values(),
         ];
     }

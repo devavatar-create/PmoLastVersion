@@ -5,13 +5,17 @@
     $tabs = array_filter([
         $u?->isAdmin() ? ['ผู้ใช้งาน', route('settings.users.index'), 'settings.users.*'] : null,
         $u?->isAdmin() ? ['แผนก', route('settings.departments.index'), 'settings.departments.*'] : null,
+        $u?->isAdmin() ? ['สิทธิ์การใช้งาน', route('settings.permissions.edit'), 'settings.permissions.*'] : null,
         $u?->isAdmin() ? ['ประเภทงาน', route('settings.job-types.index'), 'settings.job-types.*'] : null,
-        ['เทมเพลตตู้/เช็คลิสต์', route('cabinet-templates.index'), 'cabinet-templates.*'],   // open to everyone, as it was from the sidebar
+        $u?->allows('page.templates') ? ['เทมเพลตตู้/เช็คลิสต์', route('cabinet-templates.index'), 'cabinet-templates.*'] : null,   // Settings > สิทธิ์การใช้งาน
+        $u?->isAdmin() ? ['กฎสถานะ', route('settings.status-rules.index'), 'settings.status-rules.*'] : null,
         $u?->isAdmin() ? ['Automation', route('settings.automation.index'), 'settings.automation.*'] : null,
         $u?->isAdmin() ? ['สถานะงาน', route('settings.statuses.edit'), 'settings.statuses.*'] : null,
         $u?->isAdmin() ? ['แท็ก', route('settings.labels.index'), 'settings.labels.*'] : null,
         $u?->isAdmin() ? ['บอร์ด', route('settings.boards.index'), 'settings.boards.*'] : null,
         $u?->isAdmin() ? ['ฟิลด์เพิ่มเติม', route('settings.fields.index'), 'settings.fields.*'] : null,
+        $u?->isAdmin() ? ['การส่งต่องาน', route('settings.handoffs.index'), 'settings.handoffs.*'] : null,
+        $u?->isAdmin() ? ['ไฟล์และโฟลเดอร์', route('settings.files.edit'), 'settings.files.*'] : null,
         $u?->isAdmin() ? ['กฎการทำงาน', route('settings.rules.edit'), 'settings.rules.*'] : null,
         ['การแจ้งเตือน', route('settings.notifications.edit'), 'settings.notifications.*'],
         $u?->canManageTrash() ? ['ถังขยะ', route('trash.index'), 'trash.*'] : null,

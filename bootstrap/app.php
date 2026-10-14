@@ -16,10 +16,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
             'gzip' => \App\Http\Middleware\GzipResponse::class,
+            'pmo' => \App\Http\Middleware\EnsureCanEditPlan::class,   // project data / dates: edit.manage (Admin + Project Manager by default)
+            'perm' => \App\Http\Middleware\EnsurePermission::class,      // perm:page.planning - Settings > สิทธิ์การใช้งาน
+            'project.visible' => \App\Http\Middleware\EnsureProjectVisible::class,   // a project (or anything in one) only for people who see it
         ]);
 
         $middleware->web(append: [
             \App\Http\Middleware\DisableResponseCaching::class,
+            \App\Http\Middleware\RunDailyReminders::class,   // reminders without a cron job (once a day)
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

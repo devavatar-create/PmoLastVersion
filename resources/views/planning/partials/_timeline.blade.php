@@ -17,20 +17,20 @@
 
             <p x-show="tlRows().length === 0" class="text-sm text-slate-400 py-16 text-center">ไม่มีงานในเดือนนี้</p>
 
-            <template x-for="r in tlRows()" :key="r.t.id">
+            <template x-for="r in tlRows()" :key="r.key">
                 <div class="grid grid-cols-[220px_1fr] border-b border-slate-100 hover:bg-slate-50/40">
                     <div class="sticky left-0 z-10 bg-white px-3 py-3 border-r border-slate-200 text-xs text-slate-700 min-w-0 flex items-center gap-1.5">
                         <svg x-show="flag(r.t)" :style="'color:' + flag(r.t)" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3v18h2v-7h11l-2-4 2-4H7V3H5z"/></svg>
-                        <span class="truncate font-medium" x-text="r.t.so + ' ' + r.t.title"></span>
+                        <span class="truncate font-medium" x-text="(r.c ? (r.c.mo || r.c.text) + ' · ' : '') + r.t.so + ' ' + r.t.title" :title="r.t.so + ' ' + r.t.title + (r.c ? ' · ' + r.c.mo + ' ' + r.c.text : '')"></span>
                     </div>
                     <div class="grid items-center py-3" :style="'grid-template-columns:' + tlTemplate()">
-                        <div @click="openModal(r.t.id)"
-                             :style="'grid-column:' + r.col + ' / span ' + r.span + ';' + chipStyle(r.late ? lateColor() : statusColor(r.t), r.done)"
+                        <div @click="openModal(r.t.id)" :title="barTitle(r)"
+                             :style="'grid-column:' + r.col + ' / span ' + r.span + ';' + chipStyle(statusColor(r.t), r.done)"
                              class="relative flex items-center gap-1.5 h-8 rounded-md border-l-[3px] px-2 text-xs cursor-pointer hover:brightness-95 hover:shadow-sm transition">
-                            <span class="absolute -top-1.5 right-2 w-2.5 h-2.5 rounded-full ring-2 ring-white" :style="'background-color:' + (r.late ? lateColor() : statusColor(r.t))"></span>
+                            <span class="absolute -top-1.5 right-2 w-2.5 h-2.5 rounded-full ring-2 ring-white" :style="'background-color:' + statusColor(r.t)"></span>
                             <span x-show="r.before" class="shrink-0">◄</span>
                             <span class="truncate font-semibold" :class="r.done ? 'line-through text-slate-500' : 'text-slate-800'" x-text="r.t.so + ' ' + r.t.title"></span>
-                            <span class="truncate text-[10px] text-slate-500" x-text="'· ' + r.t.subtasks.length + ' ตู้'"></span>
+                            <span class="truncate text-[10px]" :class="r.late ? 'font-semibold text-red-600' : 'text-slate-500'" x-text="r.late ? '· เลยกำหนด ' + daysFromToday(r.end) * -1 + ' วัน' : (r.c ? '' : '· ' + r.t.subtasks.length + ' ตู้')"></span>
                             <span x-show="r.after" class="shrink-0 ml-auto">►</span>
                         </div>
                     </div>

@@ -58,6 +58,64 @@ class PlanningController extends Controller
         return $this->timed(response($html)->header('Content-Type', 'text/html; charset=UTF-8'), $timing);
     }
 
+    /**
+     * One cabinet's record and every one of its sub tasks the user may see (the expanded cabinet row on the page): dates,
+     * department, workflow state, the person doing it, remark. PMO roles also get the sub tasks nobody was given yet.
+     */
+    public function cabinet(Request $request, \App\Models\Cabinet $cabinet)
+    {
+        $user = $request->user();
+        abort_unless(\App\Services\WorkScope::canSeeProject($cabinet->project, $user), 403, 'คุณไม่มีสิทธิ์ดูตู้นี้');
+
+        $subtasks = \App\Models\CabinetSubtask::query()
+            ->whereHas('cabinetTask', fn ($q) => $q->where('cabinet_id', $cabinet->id))
+            ->when(! $user->canSeeAllWork(), fn ($q) => $q->where('department_id', $user->department_id))
+            ->when(! $user->canDispatchWork(), fn ($q) => $q->whereNotNull('department_id'))
+            ->with('cabinetTask:id,name,sequence', 'owner:id,name')->withCount(['checklists', 'checklists as checklists_done' => fn ($q) => $q->where('is_completed', true)])
+            ->get()->sortBy(fn ($s) => sprintf('%05d-%05d-%07d', $s->cabinetTask->sequence ?? 0, $s->sequence ?? 0, $s->id))->values();
+
+        return response()->json([
+            'cabinet' => [
+                'id' => 'c'.$cabinet->id, 'startDate' => $cabinet->start_date?->format('Y-m-d'), 'dueDate' => $cabinet->due_date?->format('Y-m-d'),
+                'expectedDate' => $cabinet->expected_completion_date?->format('Y-m-d'), 'quantity' => $cabinet->quantity,
+                'type' => (string) $cabinet->cabinet_type, 'size' => (string) $cabinet->size, 'description' => (string) $cabinet->description, 'remark' => (string) $cabinet->remark,
+                'url' => route('cabinets.show', $cabinet),
+            ],
+            'subtasks' => $subtasks->map(fn ($s) => [
+                'id' => 's'.$s->id, 'task' => $s->cabinetTask->name, 'name' => $s->name,
+                'deptId' => $s->department_id ? PlanningBoard::deptKey($s->department_id) : '', 'state' => $s->assignment_status,
+                'startDate' => $s->start_date?->format('Y-m-d'), 'dueDate' => $s->due_date?->format('Y-m-d'),
+                'ownerId' => $s->owner_id, 'remark' => (string) $s->remark,
+                'checklists' => $s->checklists_count, 'checklistsDone' => $s->checklists_done,
+                'editable' => $user->canDispatchWork(),   // dates / person / remark: Admin / PM
+            ])->all(),
+        ]);
+    }
+
+    /**
+     * Printable work order ("ใบสั่งงาน"): one department's unfinished work due on one day (and anything of theirs already late),
+     * by project and cabinet, with its checklist as boxes to tick on paper. Same visibility rule as the page.
+     */
+    public function workOrder(Request $request)
+    {
+        $user = $request->user();
+        $data = $request->validate(['dept' => ['required', 'string'], 'date' => ['required', 'date_format:Y-m-d']]);
+        abort_unless(preg_match('/^d_(\d+)$/', $data['dept'], $m), 422);
+        $department = \App\Models\Department::findOrFail((int) $m[1]);
+        $scope = \App\Services\DepartmentDashboard::scopeFor($user);
+        abort_unless($scope === null || in_array($department->id, $scope, true), 403, 'คุณไม่มีสิทธิ์ดูงานของแผนกนี้');
+
+        $rows = \App\Models\CabinetSubtask::query()
+            ->where('department_id', $department->id)
+            ->whereIn('assignment_status', [\App\Models\CabinetSubtask::ASSIGNMENT_ASSIGNED, \App\Models\CabinetSubtask::ASSIGNMENT_ACCEPTED, \App\Models\CabinetSubtask::ASSIGNMENT_IN_PROGRESS])
+            ->whereDate('due_date', '<=', $data['date'])
+            ->with('cabinetTask.cabinet.project', 'checklists')
+            ->orderBy('due_date')->get()
+            ->groupBy(fn ($s) => $s->cabinetTask->cabinet->project_id);
+
+        return view('planning.work-order', ['department' => $department, 'date' => \Carbon\Carbon::parse($data['date']), 'groups' => $rows, 'user' => $user]);
+    }
+
     /** The extra board asked for in ?board=, or null for the main one (an unknown id is the main board too). */
     private function boardOf(Request $request): ?\App\Models\Board
     {
@@ -76,7 +134,7 @@ class PlanningController extends Controller
             'boardId' => PlanningBoard::BOARD_ID,
             'root' => $root,
             'today' => today()->format('Y-m-d'),
-            'canEdit' => true,                              // like the Project / Cabinet screens: anyone who can see the project may edit it (dates stay inside their own department's work)
+            'canEdit' => $user->canDispatchWork(),          // project data and dates: Admin / Project Manager only (departments do their work: accept, checklists, fields, comments)
             'isPmo' => $user->canDispatchWork(),            // admin / PM only: delete, alert a department, dispatch; the server enforces it
             'myDept' => $profile['dept_id'],                // '' for PMO roles (they see every department)
             'userName' => $user->name,
@@ -85,8 +143,40 @@ class PlanningController extends Controller
             'boards' => collect([['id' => 'main', 'name' => 'PMO', 'url' => route('planning.board')]])
                 ->concat(\App\Models\Board::orderBy('sort')->orderBy('id')->get()->map(fn ($b) => ['id' => 'b'.$b->id, 'name' => $b->name, 'url' => route('planning.board', ['board' => $b->id])]))->all(),
             'mine' => $board->mineProjectIds($user),         // project ids for the "ของฉัน" button
+            'me' => ['id' => $user->id, 'name' => $user->name, 'avatar' => $user->avatar_url, 'deptId' => $user->department_id ? PlanningBoard::deptKey($user->department_id) : ''],
+            'canTrash' => $user->canManageTrash(),
+            // Settings > สิทธิ์การใช้งาน: what the page offers (the server leaves the data out and refuses the change anyway)
+            'perms' => ['finance' => $user->allows('data.finance'), 'contact' => $user->allows('data.contact'), 'files' => $user->allows('data.files'),
+                'comments' => $user->allows('data.comments'), 'export' => $user->allows('page.export'), 'projects' => $user->allows('page.projects')],
+            // in-page trash and the PM list of the "new project" window (PMO roles only)
+            'trash' => $user->canManageTrash() ? \App\Models\Project::onlyTrashed()->latest('deleted_at')->limit(100)->get(['id', 'project_no', 'project_name', 'deleted_at'])
+                ->map(fn ($p) => ['id' => 'p'.$p->id, 'so' => $p->project_no, 'title' => $p->project_name, 'at' => $p->deleted_at->getTimestampMs()])->all() : [],
+            // the templates a new cabinet can start from, with their sub tasks (to hand to departments in the same window)
+            'templates' => $user->canDispatchWork() ? \App\Models\CabinetTemplate::where('is_active', true)->with(['taskTemplates.subtaskTemplates' => fn ($q) => $q->withCount('checklistTemplates')])->orderByDesc('is_default')->orderBy('name')->get()
+                ->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'default' => (bool) $t->is_default,
+                    'subtasks' => $t->taskTemplates->sortBy('sequence')->flatMap(fn ($task) => $task->subtaskTemplates->sortBy('sequence')->map(fn ($s) => [
+                        'id' => $s->id, 'name' => $s->name, 'task' => $task->name, 'deptId' => $s->department_id ? PlanningBoard::deptKey($s->department_id) : '',
+                        'checklists' => $s->checklist_templates_count,
+                    ]))->values()->all()])->all() : [],
+            'jobTypes' => \App\Models\JobType::where('is_active', true)->orderBy('name')->get(['id', 'name'])->all(),
+            'pmoStatuses' => \App\Models\Project::$statuses,
+            // who can be the person doing a sub task (people of its department, or PMO roles)
+            'staff' => \App\Models\User::where('is_active', true)->orderBy('name')->get(['id', 'name', 'department_id', 'role'])
+                ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'deptId' => $u->department_id ? PlanningBoard::deptKey($u->department_id) : '', 'pmo' => $u->canDispatchWork()])->all(),
+            'urlsCabinet' => route('planning.cabinet', ['cabinet' => '__ID__']),
+            'urlsCabinetPage' => route('cabinets.show', ['cabinet' => '__ID__']),   // the cabinet's own page (the full checklist editor)
+            // a project's files (the same file manager as the project page, opened from the project window)
+            'urlsFiles' => [
+                'tree' => route('project-files.tree', ['project' => '__PID__']), 'index' => route('project-files.index', ['project' => '__PID__']),
+                'upload' => route('project-files.upload', ['project' => '__PID__']), 'ops' => route('project-files.ops', ['project' => '__PID__']),
+                'zip' => route('project-files.zip', ['project' => '__PID__']), 'versions' => route('project-files.versions', ['file' => '__ID__']),
+            ],
+            'managers' => $user->canDispatchWork() ? \App\Models\User::whereIn('role', [\App\Models\User::ROLE_ADMIN, \App\Models\User::ROLE_PROJECT_MANAGER])->where('is_active', true)->orderBy('name')->get(['id', 'name'])->all() : [],
             'people' => $this->mentionablePeople($user),     // for the @ picker (the server re-checks every tag)
             'open' => $request->integer('project') ?: null,  // a notification's link: open this project's window on load
+            // ... and that department's window (?stage=d_5), and with ?accept=1 (the push notice's "รับงาน") ask to accept its work
+            'openStage' => preg_match('/^d_\d+$/', (string) $request->query('stage')) ? (string) $request->query('stage') : null,
+            'autoAccept' => $request->boolean('accept'),
             'urls' => [
                 'sync' => route('planning.sync', array_filter(['board' => $current?->id])),
                 'comment' => route('planning.comment', array_filter(['board' => $current?->id])),
@@ -95,6 +185,8 @@ class PlanningController extends Controller
                 'newProject' => route('projects.create', array_filter(['board' => $current?->id])),
                 'home' => route('planning.board'),
                 'export' => route('my-department.export'),
+                'workOrder' => route('planning.work-order'),
+                'settings' => route('settings.index'),
             ],
         ]]);
 
@@ -117,14 +209,17 @@ class PlanningController extends Controller
 
     public function data(Request $request, PlanningBoard $board)
     {
-        [$root, $timing] = $this->measure(fn () => $board->build($request->user(), null, $this->boardOf($request)?->id));
-        $json = json_encode(['root' => $root], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        $etag = '"'.md5($json).'"';
+        $boardId = $this->boardOf($request)?->id;
+        // the stamp is taken BEFORE building: a change made while building shows up as a new stamp on the next poll
+        [$etag, $timing] = $this->measure(fn () => '"'.$board->stamp($request->user(), $boardId).'"');
 
-        // unchanged since the page's last copy: no body (the page sends the ETag it holds; no-store stops the browser doing it itself)
+        // unchanged since the page's last copy: no body and - the point - nothing built (the page sends the ETag it holds)
         if (trim((string) $request->header('If-None-Match')) === $etag) {
             return $this->timed(response('', 304)->header('ETag', $etag), $timing);
         }
+
+        [$root, $timing] = $this->measure(fn () => $board->build($request->user(), null, $boardId));
+        $json = json_encode(['root' => $root], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
         return $this->timed(response($json)->header('Content-Type', 'application/json')->header('ETag', $etag), $timing);
     }
@@ -136,7 +231,7 @@ class PlanningController extends Controller
 
         $results = $sync->apply($user, $data['ops']);
 
-        return $this->answer($user, $board, $results, $this->touchedProjectIds($data['ops']));
+        return $this->answer($user, $board, $results, $this->touchedProjectIds($data['ops']), $sync->created());
     }
 
     /** A comment with photos / files: same rules as a plain comment (PlanningSync), the files hang on the note it wrote. */
@@ -147,13 +242,14 @@ class PlanningController extends Controller
             'text' => ['nullable', 'string', 'max:2000'],
             'alertDept' => ['nullable', 'string'],
             'mentions' => ['nullable', 'array'],
+            'replyTo' => ['nullable', 'string'],
             'files' => ['required', 'array', 'min:1', 'max:5'],
             'files.*' => ['file', 'max:20480', 'mimes:'.\App\Services\CommentAttachmentUploader::ALLOWED_MIMES],
         ]);
         $user = $request->user();
 
         $op = ['type' => 'comment', 'taskId' => $data['taskId'], 'text' => trim((string) ($data['text'] ?? '')) ?: '(แนบไฟล์)',
-            'alertDept' => $data['alertDept'] ?? null, 'mentions' => $data['mentions'] ?? []];
+            'alertDept' => $data['alertDept'] ?? null, 'mentions' => $data['mentions'] ?? [], 'replyTo' => $data['replyTo'] ?? null];
         $results = $sync->apply($user, [$op]);
 
         if ($results[0]['ok'] && ($note = $sync->lastNote())) {
@@ -170,7 +266,7 @@ class PlanningController extends Controller
      * to). `removed` = asked for but not there any more (deleted, or not visible to this user). If any operation does not say
      * which project it is about, answer with the whole board to stay correct.
      */
-    private function answer($user, PlanningBoard $board, array $results, ?array $touched)
+    private function answer($user, PlanningBoard $board, array $results, ?array $touched, ?int $created = null)
     {
         [$payload, $timing] = $this->measure(function () use ($board, $user, $touched) {
             if ($touched === null) {
@@ -186,7 +282,7 @@ class PlanningController extends Controller
             ];
         });
 
-        return $this->timed(response()->json(['results' => $results] + $payload), $timing);
+        return $this->timed(response()->json(['results' => $results] + ($created ? ['created' => 'p'.$created] : []) + $payload), $timing);
     }
 
     /** @return list<int>|null project ids the operations are about; null when any operation cannot be tied to one */

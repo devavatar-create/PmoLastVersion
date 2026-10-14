@@ -82,7 +82,7 @@ class CabinetAttachmentController extends Controller
                 'size_for_humans' => $attachment->size_for_humans,
                 'url' => $attachment->url,
                 'uploaded_by_name' => auth()->user()?->name,
-                'created_at' => $attachment->created_at->format('d/m/Y H:i'),
+                'created_at' => $attachment->created_at->thaiDateTime(),
                 'destroy_url' => route('cabinet-attachments.destroy', $attachment),
             ]]);
         }
