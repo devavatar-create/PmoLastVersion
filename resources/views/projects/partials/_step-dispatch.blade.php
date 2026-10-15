@@ -1,8 +1,12 @@
-{{-- "จ่ายงานทั้งขั้น": one step across every cabinet of this template, to one department (Admin / PM). Opened from the step numbers. --}}
+{{-- "จ่ายงานทั้งขั้น": one step across every cabinet of its template, to one department (Admin / PM). --}}
 <div x-show="step !== null" x-cloak class="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" @keydown.escape.window="step = null" @click.self="step = null">
     <div role="dialog" aria-modal="true" aria-labelledby="step-dispatch-title" class="w-full max-w-lg rounded-xl bg-white shadow-xl" @click.stop>
         <div class="border-b border-slate-100 px-5 py-4">
-            <h3 id="step-dispatch-title" class="font-bold text-ae-navy">จ่ายงานทั้งขั้น: <span x-text="current && current.label"></span></h3>
+            <h3 id="step-dispatch-title" class="font-bold text-ae-navy">จ่ายงานทั้งขั้น</h3>
+            <label for="step-dispatch-step" class="sr-only">ขั้นตอน</label>
+            <select id="step-dispatch-step" x-model.number="step" @change="open(step)" class="mt-2 w-full rounded-lg border-slate-300 text-sm">
+                <template x-for="(st, i) in steps" :key="i"><option :value="i" x-text="st.label" :selected="i === step"></option></template>
+            </select>
             <p class="mt-0.5 text-xs text-slate-500">ทุกตู้ในกลุ่มนี้พร้อมกัน · แผนกที่ได้รับจะได้แจ้งเตือนรวมข้อความเดียว · งานที่แผนกรับไปแล้วเปลี่ยนแผนกไม่ได้ และจะถูกข้าม</p>
         </div>
         <div class="max-h-[50vh] space-y-2 overflow-y-auto px-5 py-4">

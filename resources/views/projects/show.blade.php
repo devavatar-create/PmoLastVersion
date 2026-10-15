@@ -8,12 +8,12 @@
     </x-slot>
 
     @php
-        $tabs = array_merge(['overview'], auth()->user()->allows('data.files') ? ['attachments'] : [], auth()->user()->allows('data.comments') ? ['comment', 'activity'] : []);
-        // the old "โปรเจ็ค" and "ใบสั่งผลิต/MO" tabs are one "ภาพรวม" tab now; links that still name them land there
-        $asked = in_array(request('tab'), ['project', 'cabinets'], true) ? 'overview' : request('tab');
-        $initialTab = in_array($asked, $tabs, true) ? $asked : 'overview';
+        $tabs = array_merge(['info'], auth()->user()->allows('data.files') ? ['attachments'] : [], auth()->user()->allows('data.comments') ? ['comment', 'activity'] : []);
+        // "ข้อมูลโครงการ" holds what the older "โปรเจ็ค", "ใบสั่งผลิต/MO" and "ภาพรวม" tabs showed; links that still name them land there
+        $asked = in_array(request('tab'), ['project', 'cabinets', 'overview'], true) ? 'info' : request('tab');
+        $initialTab = in_array($asked, $tabs, true) ? $asked : 'info';
     @endphp
-    <div class="max-w-screen-2xl mx-auto space-y-5" x-data="{ tab: '{{ $initialTab }}' }" x-init="$watch('tab', (t) => keepTabInUrl(t, 'overview'))">
+    <div class="max-w-screen-2xl mx-auto space-y-5" x-data="{ tab: '{{ $initialTab }}' }" x-init="$watch('tab', (t) => keepTabInUrl(t, 'info'))">
 
         <x-closed-project-banner :project="$project" />
 
@@ -33,27 +33,27 @@
             </div>
         </div>
 
-        <div class="flex gap-1 overflow-x-auto border-b border-slate-200">
-            <button type="button" @click="tab = 'overview'"
-                    :class="tab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
-                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">ภาพรวม</button>
+        <div class="flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="ส่วนของโครงการ">
+            <button type="button" @click="tab = 'info'" role="tab" :aria-selected="tab === 'info'"
+                    :class="tab === 'info' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
+                    class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">ข้อมูลโครงการ</button>
             @if (auth()->user()->allows('data.files'))
-            <button type="button" @click="tab = 'attachments'"
+            <button type="button" @click="tab = 'attachments'" role="tab" :aria-selected="tab === 'attachments'"
                     :class="tab === 'attachments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
                     class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">ไฟล์ ({{ app(\App\Services\ProjectFiles::class)->count($project, null, auth()->user()) }})</button>
             @endif
             @if (auth()->user()->allows('data.comments'))
-            <button type="button" @click="tab = 'comment'"
+            <button type="button" @click="tab = 'comment'" role="tab" :aria-selected="tab === 'comment'"
                     :class="tab === 'comment' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
                     class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">Comment</button>
-            <button type="button" @click="tab = 'activity'"
+            <button type="button" @click="tab = 'activity'" role="tab" :aria-selected="tab === 'activity'"
                     :class="tab === 'activity' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
                     class="whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px">Activity Log</button>
             @endif
         </div>
 
-        <div x-show="tab === 'overview'">
-            @include('projects.partials._overview')
+        <div x-show="tab === 'info'" role="tabpanel">
+            @include('projects.partials._info')
         </div>
 
         @if (auth()->user()->allows('data.files'))
@@ -302,5 +302,27 @@
 
     @push('scripts')
         @include('cabinets.partials._assignment-scripts')
+        <script>
+            /** "ข้อมูลโครงการ": the cabinet table's search / filters / pages, and which alert popover is open (one at a time). */
+            function pmoProjectInfo(rows) {
+                const STATUS = { not_started: ['ยังไม่เริ่ม', 'bg-slate-100 text-slate-600'], in_progress: ['กำลังผลิต', 'bg-blue-50 text-blue-700'],
+                    completed: ['เสร็จแล้ว', 'bg-emerald-50 text-emerald-700'], on_hold: ['พักไว้', 'bg-amber-50 text-amber-700'] };
+                const RISK = { high: ['สูง', 'text-red-600'], watch: ['เฝ้าระวัง', 'text-orange-600'], ok: ['ปกติ', 'text-slate-500'], none: ['-', 'text-slate-400'] };
+                return {
+                    rows, q: '', status: '', type: '', risk: '', page: 1, per: 20, alert: null,
+                    filtered() {
+                        const q = this.q.trim().toLowerCase();
+                        return this.rows.filter((r) => (! q || (r.mo + ' ' + (r.model || '')).toLowerCase().includes(q))
+                            && (! this.status || r.status === this.status)
+                            && (! this.type || r.type === this.type)
+                            && (! this.risk || (this.risk === 'delayed' ? r.delayed : (this.risk === 'late-tasks' ? r.lateTasks > 0 : r.risk === this.risk))));
+                    },
+                    pages() { return Math.max(1, Math.ceil(this.filtered().length / this.per)); },
+                    paged() { this.page = Math.min(this.page, this.pages()); return this.filtered().slice((this.page - 1) * this.per, this.page * this.per); },
+                    statusLabel: (s) => (STATUS[s] || [s])[0], statusClass: (s) => (STATUS[s] || ['', 'bg-slate-100 text-slate-600'])[1],
+                    riskLabel: (r) => RISK[r][0], riskClass: (r) => RISK[r][1],
+                };
+            }
+        </script>
     @endpush
 </x-app-layout>

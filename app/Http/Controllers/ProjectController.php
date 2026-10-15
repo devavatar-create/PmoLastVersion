@@ -128,7 +128,7 @@ class ProjectController extends Controller
     {
         $project->load([
             'projectTasks.owner',
-            'cabinets.tasks.subtasks.department', 'cabinets.cabinetTemplate',
+            'cabinets.tasks.subtasks.department', 'cabinets.tasks.subtasks.owner', 'cabinets.cabinetTemplate',
             'projectManager', 'jobType',
         ]);
 
@@ -156,7 +156,6 @@ class ProjectController extends Controller
             'departments' => \App\Models\Department::orderBy('name')->get(),
             'comments' => $comments,
             'overview' => app(\App\Services\ProjectOverview::class)->build($project, auth()->user()),
-            'latestFiles' => auth()->user()->allows('data.files') ? app(\App\Services\ProjectFiles::class)->latest($project, auth()->user()) : [],
         ]);
     }
 

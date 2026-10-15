@@ -39,9 +39,10 @@ class NavigationTest extends TestCase
     {
         $html = $this->actingAs($this->admin)->get(route('projects.show', [$this->project, 'tab' => 'cabinets']))->assertOk()->getContent();
 
-        $this->assertStringContainsString('href="'.route('cabinets.show', $this->cabinet).'"', $html);
+        // the MO table is filled from @js() data: the link is there, JSON-escaped
+        $this->assertStringContainsString(substr((string) \Illuminate\Support\Js::from(['url' => route('cabinets.show', $this->cabinet)]), strlen("JSON.parse('{"), -strlen("}')")), $html);
         $this->assertStringNotContainsString('openCabinetPanel', $html, 'no quick panel any more');
-        $this->assertStringContainsString("tab: 'overview'", $html, 'the old MO tab name lands on the merged ภาพรวม tab');
+        $this->assertStringContainsString("tab: 'info'", $html, 'the old MO tab name lands on ข้อมูลโครงการ');
         $this->assertStringContainsString('keepTabInUrl', $html, 'and goes back into it');
     }
 
