@@ -412,7 +412,7 @@ export default function registerPlanningBoard() {
                 // handed out with no due date yet (they cannot be on the calendar): one row per department
                 const undated = this.visible().map((t) => ({ t, cabs: (t.deptStages || []).filter((st) => st.undated > 0 && (!this.dept || st.deptId === this.dept))
                     .map((st) => ({ c: null, label: this.deptOf(st.deptId).name + ' · ' + st.undated + ' งาน', ed: '', done: false, key: st.deptId })) })).filter((g) => g.cabs.length);
-                // Settings > การส่งต่องาน: what the departments passing work to mine said is coming (late, or within 7 days) and I have not ticked yet
+                // template pairs: what the Sub Tasks my work compares with said is coming (late, or within 7 days) and I have not ticked yet
                 const soon = addDays(this.today, 7);
                 const incoming = this.visible().map((t) => ({ t, cabs: t.subtasks.flatMap((c) => (c.linked || []).flatMap((l) => l.items
                     .filter((i) => i.expected && !i.received && i.expected <= soon)
@@ -1034,15 +1034,19 @@ export default function registerPlanningBoard() {
                 this.cl = { taskId, cabId, adding: null, big, anchor: { top: r.top, bottom: r.bottom, left: r.left, width: r.width } };
                 this.clPlace();
             },
-            // where the window goes: normal = up to 560 x 720 next to the pill; big = most of the screen (notebook / iPad); always on screen
+            // where the window goes: normal = up to 560 x 720 next to the pill (960 wide when a department passes work to this
+            // one, so the two lists sit side by side); big = most of the screen (notebook / iPad); always on screen
             clPlace() {
                 const W = window.innerWidth, H = window.innerHeight, a = this.cl.anchor;
-                const w = this.cl.big ? Math.min(1000, W - 16) : Math.min(560, W - 16);
+                const linked = ((this.clCab && this.clCab.linked) || []).length > 0;
+                const w = this.cl.big ? Math.min(1000, W - 16) : Math.min(linked ? 960 : 560, W - 16);
                 const h = this.cl.big ? H - 24 : Math.min(720, H - 24);
                 const top = this.cl.big ? 12 : Math.max(8, Math.min(a.bottom + 6, H - h - 12));
                 const left = this.cl.big ? Math.round((W - w) / 2) : Math.max(8, Math.min(a.left + a.width / 2 - w / 2, W - w - 8));
                 this.cl = { ...this.cl, w, h, top, left };
             },
+            // Settings > การส่งต่องาน: this department's list and the one passing work to it, next to each other to compare
+            clSide() { return !!(this.cl && this.cl.w >= 640 && this.clCab && (this.clCab.linked || []).length); },
             clToggleBig() {
                 this.cl = { ...this.cl, big: !this.cl.big };
                 try { localStorage.setItem('planning.clBig', this.cl.big ? '1' : ''); } catch (e) { /* not remembered */ }
@@ -1086,6 +1090,14 @@ export default function registerPlanningBoard() {
                 if (!c || !v) return;
                 c.checklist.filter((i) => i.deptId === deptId).forEach((i) => { i.expected = v; });
                 this.send([{ type: 'checklist_date_all', taskId: this.cl.taskId, cabinetId: c.id, deptId, date: v }]);
+            },
+            // template pairs: the lists a Sub Task of mine compares with, and their items matched to mine by name
+            clLinkedOf(subId) { return ((this.clCab && this.clCab.linked) || []).filter((l) => l.forId === subId); },
+            clNorm(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); },
+            clMatches(subId, item) { const n = this.clNorm(item.text); return this.clLinkedOf(subId).flatMap((l) => l.items.filter((x) => this.clNorm(x.text) === n).map((x) => ({ ...x, l }))); },
+            clUnmatched(w) {
+                const mine = new Set(w.items.map((i) => this.clNorm(i.text)));
+                return this.clLinkedOf(w.id).flatMap((l) => l.items.filter((x) => !mine.has(this.clNorm(x.text))).map((x) => ({ ...x, l })));
             },
             linkedLate(i) { return !!i.expected && !i.received && i.expected < this.today; },
             stateWord(state) { return { ASSIGNED: 'รอรับ', ACCEPTED: 'รับแล้ว', IN_PROGRESS: 'กำลังทำ', COMPLETED: 'เสร็จ' }[state] || ''; },

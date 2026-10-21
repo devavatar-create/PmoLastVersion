@@ -12,7 +12,6 @@ use App\Models\CabinetTaskTemplate;
 use App\Models\CabinetTemplate;
 use App\Models\ChecklistTemplate;
 use App\Models\Department;
-use App\Models\DepartmentLink;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,7 +101,11 @@ class ChecklistEditorTest extends TestCase
 
     public function test_dates_only_where_the_handoff_asks_and_pasted_thai_dates_are_read(): void
     {
-        DepartmentLink::create(['from_department_id' => $this->busbar->id, 'to_department_id' => Department::create(['name' => 'คลัง', 'code' => 'ST', 'is_active' => true])->id, 'date_label' => 'วันของเข้า']);
+        // the date shows where the department has one (Settings > แผนก) AND another Sub Task compares with this one
+        $this->busbar->update(['handoff_date_label' => 'วันของเข้า']);
+        $this->op($this->user($this->busbar), ['type' => 'add', 'items' => [['name' => 'Y', 'date' => '20/10/2569']]])->assertStatus(422);
+        $this->other->pairSources()->attach($this->sub->id);
+        app(\App\Services\HandoffService::class)->forgetPairs();   // set straight in the table here, not through SubtaskPairs
         $this->op($this->user($this->busbar), ['type' => 'add', 'items' => [['name' => 'Breaker', 'date' => '20/10/2569'], ['name' => 'CT', 'date' => '2026-11-01']]])->assertOk();
         $this->assertSame(['2026-10-20', '2026-11-01'], CabinetChecklist::whereIn('name', ['Breaker', 'CT'])->orderBy('sequence')->get()->map(fn ($c) => $c->expected_date->format('Y-m-d'))->all());
         $this->op($this->user($this->busbar), ['type' => 'add', 'items' => [['name' => 'X', 'date' => '31/02/2569']]])->assertStatus(422);

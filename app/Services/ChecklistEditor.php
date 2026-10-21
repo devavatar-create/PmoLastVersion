@@ -40,7 +40,7 @@ class ChecklistEditor
         return [
             'items' => $this->items($kind, $owner),
             'editable' => $this->canEdit($kind, $owner, $user),
-            'dateLabel' => $kind === 'subtask' ? app(HandoffService::class)->dateLabel($owner->department_id) : null,
+            'dateLabel' => $kind === 'subtask' ? app(HandoffService::class)->dateLabelFor($owner) : null,
         ];
     }
 
@@ -70,7 +70,7 @@ class ChecklistEditor
             ? $owner->checklists->sortBy(fn ($c) => sprintf('%09d-%09d', $c->sequence ?? 0, $c->id))->values()
             : $owner->checklists()->with('completedBy:id,name')->orderBy('sequence')->orderBy('id')->get();
 
-        // Settings > การส่งต่องาน: has the department that follows this one (e.g. คลัง after จัดซื้อ) dealt with each item yet
+        // the Sub Tasks comparing with this one (template pairs): has each dealt with each item yet
         $receipts = app(HandoffService::class)->receiptsFor($owner->setRelation('checklists', $list));
 
         return $list
@@ -364,11 +364,11 @@ class ChecklistEditor
             : ['name' => $item->name, 'remark' => (string) $item->remark, 'date' => $item->expected_date?->format('Y-m-d')];
     }
 
-    /** A date can be given only where Settings > การส่งต่องาน asks this department for one. */
+    /** A date can be given only where another Sub Task compares with this one and its department has a date (Settings > แผนก). */
     private function checkDates(string $kind, Model $owner, bool $any): void
     {
-        if ($any && ($kind === 'template' || ! app(HandoffService::class)->dateLabel($owner->department_id))) {
-            throw new PlanningRejected('รายการของ Sub Task นี้ไม่มีช่องวันที่ (ตั้งค่า › การส่งต่องาน)');
+        if ($any && ($kind === 'template' || ! app(HandoffService::class)->dateLabelFor($owner))) {
+            throw new PlanningRejected('รายการของ Sub Task นี้ไม่มีช่องวันที่ (ตั้งค่า › แผนก และคู่เทียบในเทมเพลต)');
         }
     }
 

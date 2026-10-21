@@ -18,6 +18,19 @@
         </div>
     </div>
 
+    {{-- "เทียบกับ…": the other Sub Tasks whose checklist cabinets made from this template show next to this one's --}}
+    @php
+        $pairChosen = $subtaskTemplate->pairSources->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'dept' => (string) $s->department?->name])->values();
+        $pairFeeds = $subtaskTemplate->pairReceivers->pluck('name');
+    @endphp
+    @php $canEditTemplates = auth()->user()->allows('edit.templates'); @endphp
+    <x-pair-picker class="mt-1.5 ml-6" :url="route('subtask-templates.pairs', $subtaskTemplate)" :chosen="$pairChosen" :can-edit="$canEditTemplates"
+                   :options="($pairOptions ?? collect())->where('id', '!=', $subtaskTemplate->id)->values()">
+        @if ($pairFeeds->isNotEmpty())
+            <span class="text-slate-500">ส่งรายการให้ <span class="font-medium text-slate-700">{{ $pairFeeds->implode(', ') }}</span> เทียบ</span>
+        @endif
+    </x-pair-picker>
+
     <div x-show="editSubtask" x-cloak class="mt-2 mb-2 p-3 bg-slate-50 rounded-lg">
         <form method="POST" action="{{ route('subtask-templates.update', $subtaskTemplate) }}" class="subtask-template-edit-form flex flex-wrap items-end gap-2" data-subtask-id="{{ $subtaskTemplate->id }}">
             @csrf @method('PUT')

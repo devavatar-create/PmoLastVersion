@@ -15,6 +15,9 @@
             @php
                 $subs = $template->taskTemplates->flatMap->subtaskTemplates;
                 $usedBy = $template->cabinets()->withTrashed()->count();
+                // "เทียบกับ…": every Sub Task of the template, for each Sub Task's picker (_subtask)
+                $pairOptions = $template->taskTemplates->flatMap(fn ($t) => $t->subtaskTemplates->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'task' => $t->name, 'dept' => (string) $s->department?->name]))->values();
+                $hasPairs = $subs->contains(fn ($s) => $s->pairSources->isNotEmpty());
             @endphp
             <div class="flex flex-wrap items-start justify-between gap-4">
                 <div class="min-w-0">
@@ -36,6 +39,11 @@
                 <div class="flex shrink-0 flex-wrap justify-end gap-2">
                     <button type="button" x-data @click="$dispatch('open-modal', 'template-sync')" class="px-3 py-2 rounded-lg bg-blue-50 text-sm font-medium text-blue-700 hover:bg-blue-100"
                             title="เพิ่มรายการที่ตู้เดิม (ที่สร้างจากเทมเพลตนี้) ยังไม่มี">ส่งรายการใหม่ไปตู้เดิม</button>
+                    @if ($pairCabinets)
+                        <form method="POST" action="{{ route('cabinet-templates.pairs.apply', $template) }}"
+                              onsubmit="return confirm(@js('ใช้คู่เทียบ Checklist ของเทมเพลตนี้กับตู้เดิม '.$pairCabinets.' ตู้ (โครงการที่ยังไม่ปิด)?'."\n\nคู่เทียบเดิมของตู้เหล่านั้นจะถูกแทนด้วยของเทมเพลต"))">@csrf
+                            <button class="px-3 py-2 rounded-lg bg-blue-50 text-sm font-medium text-blue-700 hover:bg-blue-100" title="Sub Task ที่ตรงกัน (จากเทมเพลต หรือชื่อเดียวกัน) จะเทียบกันเหมือนในเทมเพลต">ใช้คู่เทียบกับตู้เดิม ({{ $pairCabinets }} ตู้)</button></form>
+                    @endif
                     <a href="{{ route('cabinet-templates.export', $template) }}" class="px-3 py-2 rounded-lg bg-slate-100 text-sm font-medium text-slate-700 hover:bg-slate-200" title="Task | Sub Task | แผนก | Checklist | หมายเหตุ">Export Excel</a>
                     <form method="POST" action="{{ route('cabinet-templates.duplicate', $template) }}" onsubmit="return confirm('ทำสำเนาเทมเพลตนี้ทั้งหมด?')">@csrf
                         <button class="px-3 py-2 rounded-lg bg-slate-100 text-sm font-medium text-slate-700 hover:bg-slate-200">ทำสำเนา</button></form>

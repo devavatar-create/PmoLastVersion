@@ -30,6 +30,9 @@ class TemplateTools
 {
     public const CSV_HEADER = ['Task', 'Sub Task', 'แผนก', 'Checklist', 'หมายเหตุ'];
 
+    /** @var array<int, int> while duplicating a template: old sub task id => its copy (to copy the pairs) */
+    private array $made = [];
+
     public function __construct(private ProgressService $progress) {}
 
     // ======================================================================= send new items to existing cabinets
@@ -147,9 +150,11 @@ class TemplateTools
         return DB::transaction(function () use ($source) {
             $copy = CabinetTemplate::create(['name' => $source->name.' (สำเนา)', 'code' => $this->uniqueCode($source->code.'-COPY'),
                 'description' => $source->description, 'is_default' => false, 'is_active' => true]);
+            $this->made = [];
             foreach ($source->taskTemplates()->with('subtaskTemplates.checklistTemplates')->get() as $task) {
                 $this->copyTask($task, $copy->id, $task->sequence, $task->name);
             }
+            app(SubtaskPairs::class)->copyTemplatePairs($this->made);   // the copy compares the same Sub Tasks
 
             return $copy;
         });
@@ -191,6 +196,7 @@ class TemplateTools
         foreach ($sub->checklistTemplates as $c) {
             ChecklistTemplate::create(['cabinet_subtask_template_id' => $copy->id, 'name' => $c->name, 'description' => $c->description, 'sequence' => $c->sequence]);
         }
+        $this->made[$sub->id] = $copy->id;
 
         return $copy;
     }

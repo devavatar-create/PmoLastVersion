@@ -96,7 +96,7 @@ class PlanningBoard
                 'checklist' => [],
                 'fields' => ($fieldsByDept->get($d->id) ?? collect())->map(fn (DepartmentField $f) => self::fieldShape($f))->values()->all(),
                 'seeAll' => (bool) $d->sees_all,
-                // Settings > การส่งต่องาน: the date this department gives each checklist item for the next one (null = none) and who follows it
+                // Settings > แผนก: the date this department gives each checklist item (null = none); template pairs: whose Sub Tasks compare with its
                 'dateLabel' => $handoff->dateLabel($d->id),
                 'passesTo' => array_map(fn ($id) => self::deptKey($id), $handoff->targetsFor($d->id)),
             ])->all();
@@ -174,7 +174,7 @@ class PlanningBoard
             ->with('cabinetTask:id,cabinet_id,name')->withCount('checklists')->orderBy('id')->get()
             ->groupBy(fn ($s) => $s->cabinetTask->cabinet_id);
         $this->usual = $this->usualDepartments($this->free->flatten());
-        // Settings > การส่งต่องาน: what the departments passing work to this user's department have done, per cabinet (read only)
+        // template pairs: the lists this user's department's Sub Tasks compare with, per cabinet (read only)
         $this->linked = app(HandoffService::class)->linkedFor($user, $byProject->flatten(1)->map(fn ($s) => $s->cabinetTask->cabinet_id)->unique()->values());
         $cabinets = $builder ? Cabinet::with('boardStatus')->whereIn('project_id', $ids)->orderBy('sequence')->orderBy('id')->get()->groupBy('project_id') : null;
 

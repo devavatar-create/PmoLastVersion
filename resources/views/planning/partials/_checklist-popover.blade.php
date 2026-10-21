@@ -19,7 +19,9 @@
             <a :href="cabinetPage(clCab)" class="shrink-0 font-medium text-blue-600 hover:underline" title="หน้าตู้: แก้แบบตาราง เลือกหลายรายการ ย้าย / คัดลอก วางจาก Excel">แก้แบบตาราง ↗</a></p>
         <div class="mb-2.5 h-1.5 overflow-hidden rounded-[3px] bg-slate-100"><div class="h-full rounded-[3px] transition-all" :class="clProgress().pct === 100 ? 'bg-emerald-500' : 'bg-blue-600'" :style="'width:' + clProgress().pct + '%'"></div></div>
 
+        {{-- a Sub Task that compares with another (template pairs): each item with the other list's item of the same name beside it --}}
         <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+          <div class="flex min-w-0 flex-col gap-1">
             {{-- Settings > การส่งต่องาน: the date this department gives its items for the next one, for the whole cabinet at once --}}
             <template x-for="d in clDateDepts()" :key="'cd' + d">
                 <div class="flex items-center gap-1.5 rounded-md bg-amber-50 px-1.5 py-1 text-[11px] text-amber-900">
@@ -41,14 +43,26 @@
                                 <span class="shrink-0 text-[10.5px] tabular-nums text-slate-500" x-show="w.items.length" x-text="w.done + '/' + w.items.length"></span>
                                 <button type="button" @click="clAdd(w.id)" class="shrink-0 rounded px-1 text-sm font-bold leading-none text-blue-600 hover:bg-blue-50" title="เพิ่มรายการในงานนี้" aria-label="เพิ่มรายการ">+</button>
                             </div>
+                            {{-- compares with (template pairs): which Sub Task, its department, where its work is, a link to it --}}
+                            <template x-for="l in clLinkedOf(w.id)" :key="'lh' + l.id">
+                                <a :href="l.href" target="_blank" class="flex flex-wrap items-center gap-x-1.5 border-b border-dashed border-slate-200 bg-slate-50 px-1.5 py-1 text-[11px] hover:bg-blue-50">
+                                    <span class="font-bold text-slate-500">⇄ เทียบกับ</span>
+                                    <span class="h-2 w-2 shrink-0 rounded-full" :style="'background-color:' + deptOf(l.deptId).color"></span>
+                                    <span class="font-semibold text-slate-800" x-text="l.deptName || deptOf(l.deptId).name"></span>
+                                    <span class="text-slate-600" x-text="'· ' + l.title"></span>
+                                    <span class="rounded-full px-1.5" :class="l.late ? 'bg-red-100 font-semibold text-red-700' : 'bg-white text-slate-600 ring-1 ring-slate-200'" x-text="l.state + (l.due ? ' · ครบ ' + fmtBE(l.due) : '')"></span>
+                                    <span class="ml-auto tabular-nums text-slate-500" x-text="l.done + '/' + l.total + ' · ไปดู ↗'"></span>
+                                </a>
+                            </template>
                             <template x-for="i in w.items" :key="i.id + (i.expected || '')">
+                              <div :class="clLinkedOf(w.id).length && clSide() ? 'grid grid-cols-2' : ''">
                               <div>
-                                <label class="group flex cursor-pointer items-start gap-2 px-1.5 py-1 hover:bg-slate-50">
+                                <label class="group relative flex cursor-pointer items-start gap-2 px-1.5 py-1 hover:bg-slate-50">
                                     <input type="checkbox" :checked="i.done" @change="tick(clTask, clCab, i)" class="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-emerald-600">
                                     <span class="min-w-0 flex-1 break-words text-[13px] leading-snug" :class="i.done ? 'line-through text-slate-400' : 'text-slate-800'" x-text="i.text" :title="i.text + (i.remark ? ' — ' + i.remark : '')"></span>
                                     <span x-show="i.remark" class="shrink-0 text-[11px]" :title="i.remark">📝</span>
                                     <span x-show="deptOf(i.deptId).dateLabel && !canEditStage(i.deptId) && i.expected" class="shrink-0 rounded bg-amber-50 px-1 text-[10.5px] text-amber-800" :title="deptOf(i.deptId).dateLabel" x-text="'📦 ' + fmtBE(i.expected)"></span>
-                                    <span class="flex shrink-0 items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                                    <span class="flex shrink-0 [@media(hover:hover)]:absolute [@media(hover:hover)]:right-0.5 [@media(hover:hover)]:top-0.5 [@media(hover:hover)]:rounded [@media(hover:hover)]:bg-white [@media(hover:hover)]:shadow-sm [@media(hover:hover)]:ring-1 [@media(hover:hover)]:ring-slate-200 items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
                                         <button type="button" @click.prevent="clMove(i, 'up')" class="px-0.5 text-[12px] text-slate-400 hover:text-slate-800" title="ขึ้น" aria-label="ย้ายขึ้น">↑</button>
                                         <button type="button" @click.prevent="clMove(i, 'down')" class="px-0.5 text-[12px] text-slate-400 hover:text-slate-800" title="ลง" aria-label="ย้ายลง">↓</button>
                                         <button type="button" @click.prevent="clRename(i)" class="px-0.5 text-[12px] text-slate-400 hover:text-blue-600" title="แก้ชื่อ" aria-label="แก้ชื่อรายการ">✎</button>
@@ -66,6 +80,30 @@
                                     </div>
                                 </template>
                               </div>
+                              {{-- the other list's item of the same name: beside it when there is room, under it otherwise --}}
+                              <div x-show="clLinkedOf(w.id).length" class="border-dashed border-slate-200 bg-slate-50/70 py-1 pr-1.5 text-[13px]" :class="clSide() ? 'border-l pl-1.5' : 'pl-8'">
+                                <template x-for="m in clMatches(w.id, i)" :key="m.l.id + m.id">
+                                    <div class="flex items-start gap-2">
+                                        <span class="w-4 shrink-0 text-center" :class="m.done ? 'text-emerald-600' : 'text-slate-300'" x-text="m.done ? '✓' : '○'"></span>
+                                        <span class="min-w-0 flex-1 break-words leading-snug" :class="m.done ? 'text-slate-800' : 'text-slate-500'" x-text="m.text" :title="m.text + (m.remark ? ' — ' + m.remark : '')"></span>
+                                        <span x-show="m.expected" class="shrink-0 rounded px-1 text-[10.5px]" :class="linkedLate(m) ? 'bg-red-50 font-semibold text-red-600' : 'bg-amber-50 text-amber-800'"
+                                              :title="deptOf(m.l.deptId).dateLabel || ''" x-text="'📦 ' + fmtBE(m.expected)"></span>
+                                    </div>
+                                </template>
+                                <span x-show="!clMatches(w.id, i).length" class="block text-[11px] leading-5 text-slate-400">— ไม่มีในรายการที่เทียบ</span>
+                              </div>
+                              </div>
+                            </template>
+                            {{-- in the other list only --}}
+                            <template x-for="m in clUnmatched(w)" :key="'um' + m.l.id + m.id">
+                                <div :class="clSide() ? 'grid grid-cols-2' : ''">
+                                    <div class="flex items-center gap-2 px-1.5 py-1 text-[11px] text-slate-400">— ยังไม่มีในรายการนี้</div>
+                                    <div class="flex items-start gap-2 border-dashed border-slate-200 bg-slate-50/70 py-1 pr-1.5 text-[13px]" :class="clSide() ? 'border-l pl-1.5' : 'pl-8'">
+                                        <span class="w-4 shrink-0 text-center" :class="m.done ? 'text-emerald-600' : 'text-slate-300'" x-text="m.done ? '✓' : '○'"></span>
+                                        <span class="min-w-0 flex-1 break-words leading-snug" :class="m.done ? 'text-slate-800' : 'text-slate-500'" x-text="m.text"></span>
+                                        <span x-show="m.expected" class="shrink-0 rounded px-1 text-[10.5px]" :class="linkedLate(m) ? 'bg-red-50 font-semibold text-red-600' : 'bg-amber-50 text-amber-800'" x-text="'📦 ' + fmtBE(m.expected)"></span>
+                                    </div>
+                                </div>
                             </template>
                             <p x-show="!w.items.length && cl.adding !== w.id" class="px-1.5 py-1 text-[11px] text-slate-400">ยังไม่มีรายการ</p>
                             <input x-show="cl.adding === w.id" :id="'cl-draft-' + w.id" x-model="clDraft" type="text" maxlength="255" placeholder="ชื่อรายการ... (Enter เพิ่ม · วางจาก Excel ได้หลายแถว)"
@@ -76,30 +114,7 @@
                 </div>
             </template>
             <p x-show="clGroups().length === 0" class="px-1 py-2.5 text-xs leading-relaxed text-slate-400">ยังไม่มีงานที่จ่ายให้แผนกในตู้นี้</p>
-            {{-- Settings > การส่งต่องาน: the departments passing work to mine, read only (the same rows they tick) --}}
-            <template x-for="l in (clCab.linked || [])" :key="'ln' + l.deptId">
-                <div class="mt-1.5 rounded-md border border-dashed border-slate-300">
-                    <div class="flex items-center gap-1.5 rounded-t-md bg-slate-50 px-1.5 py-1 text-[12px]">
-                        <span class="h-2 w-2 shrink-0 rounded-full" :style="'background-color:' + deptOf(l.deptId).color"></span>
-                        <span class="min-w-0 flex-1 truncate font-semibold text-slate-700" x-text="'ข้อมูลจาก ' + deptOf(l.deptId).name"></span>
-                        <span class="shrink-0 text-[10.5px] text-slate-400">ดูอย่างเดียว</span>
-                        <span class="shrink-0 text-[10.5px] tabular-nums text-slate-500" x-text="l.done + '/' + l.total"></span>
-                    </div>
-                    <template x-for="i in l.items" :key="i.id">
-                        <div class="px-1.5 py-1 text-[12.5px]">
-                            <div class="flex items-center gap-2">
-                                <span class="w-4 shrink-0 text-center" :class="i.done ? 'text-emerald-600' : 'text-slate-300'" x-text="i.done ? '✓' : '○'"></span>
-                                <span class="min-w-0 flex-1 break-words leading-snug" :class="i.done ? 'text-slate-800' : 'text-slate-500'" x-text="i.text" :title="i.text"></span>
-                                <span x-show="i.expected" class="shrink-0 rounded px-1 text-[10.5px]" :class="linkedLate(i) ? 'bg-red-50 font-semibold text-red-600' : 'bg-amber-50 text-amber-800'"
-                                      :title="deptOf(l.deptId).dateLabel || ''" x-text="'📦 ' + fmtBE(i.expected)"></span>
-                                <span x-show="i.received" class="shrink-0 text-[10.5px] font-semibold text-emerald-600" title="แผนกคุณติ๊กรายการนี้แล้ว">✓ แผนกคุณ</span>
-                            </div>
-                            <p x-show="i.remark" class="ml-6 whitespace-pre-line break-words text-[11px] text-slate-500" x-text="'📝 ' + i.remark"></p>
-                        </div>
-                    </template>
-                    <p x-show="!l.items.length" class="px-1.5 py-1 text-[11px] text-slate-400">ยังไม่มีรายการ</p>
-                </div>
-            </template>
+          </div>
         </div>
     </div>
 </template>

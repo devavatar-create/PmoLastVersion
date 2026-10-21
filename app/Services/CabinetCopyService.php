@@ -22,10 +22,11 @@ class CabinetCopyService
     public function copyFrom(Cabinet $source, Cabinet $target): void
     {
         $counts = ['tasks' => 0, 'subtasks' => 0, 'checklists' => 0, 'assigned' => 0];
+        $made = [];   // source sub task id => the copy's, for the pairs that compare checklists
 
         // Suppressed: logging every copied row would bury the timeline in
         // boilerplate noise. One consolidated entry below instead.
-        Model::withoutEvents(function () use ($source, $target, &$counts) {
+        Model::withoutEvents(function () use ($source, $target, &$counts, &$made) {
             foreach ($source->tasks as $sourceTask) {
                 $task = $target->tasks()->create([
                     'cabinet_task_template_id' => $sourceTask->cabinet_task_template_id,
@@ -53,6 +54,7 @@ class CabinetCopyService
                         'status' => 'not_started',
                         'progress' => 0,
                     ] + CabinetSubtask::initialAssignment($sourceSubtask->department_id));
+                    $made[$sourceSubtask->id] = $subtask->id;
                     $counts['subtasks']++;
                     $counts['assigned'] += $subtask->department_id ? 1 : 0;
 
@@ -69,6 +71,8 @@ class CabinetCopyService
                 }
             }
         });
+
+        app(SubtaskPairs::class)->copyFromCabinet($made);
 
         ActivityLog::record(
             $target->project_id,

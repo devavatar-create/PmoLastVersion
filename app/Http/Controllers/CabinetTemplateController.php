@@ -38,10 +38,12 @@ class CabinetTemplateController extends Controller
 
     public function show(CabinetTemplate $cabinetTemplate)
     {
-        $cabinetTemplate->load('taskTemplates.subtaskTemplates.checklistTemplates', 'taskTemplates.subtaskTemplates.department');
+        $cabinetTemplate->load('taskTemplates.subtaskTemplates.checklistTemplates', 'taskTemplates.subtaskTemplates.department',
+            'taskTemplates.subtaskTemplates.pairSources', 'taskTemplates.subtaskTemplates.pairReceivers');
 
         return view('cabinet-templates.show', [
             'template' => $cabinetTemplate,
+            'pairCabinets' => app(\App\Services\SubtaskPairs::class)->cabinetsOf($cabinetTemplate)->count(),
             'departments' => \App\Models\Department::orderBy('name')->get(),
         ]);
     }

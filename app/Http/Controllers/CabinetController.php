@@ -123,7 +123,7 @@ class CabinetController extends Controller
             'tasks.subtasks.acceptedBy',
             'tasks.subtasks.startedBy',
             'tasks.subtasks.completedBy',
-            'tasks.subtasks.subtaskTemplate',   // its department = the one "จ่ายตามแผนกที่แนะนำ" offers
+            'tasks.subtasks.pairSources',   // "แก้คู่เทียบ"
         ]);
 
         $cabinet->tasks->each(fn ($task) => $task->setRelation('cabinet', $cabinet));

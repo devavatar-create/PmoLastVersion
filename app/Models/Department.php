@@ -16,6 +16,7 @@ class Department extends Model
         'color',
         'icon',
         'sees_all',
+        'handoff_date_label',
         'is_active',
     ];
 

@@ -21,10 +21,11 @@ class CabinetTemplateService
         $cabinet->save();
 
         $counts = ['tasks' => 0, 'subtasks' => 0, 'checklists' => 0, 'assigned' => 0];
+        $made = [];   // template sub task id => the cabinet's, for the pairs that compare checklists
 
         // Suppressed: logging every copied row would bury the timeline in
         // template-boilerplate noise. One consolidated entry below instead.
-        Model::withoutEvents(function () use ($cabinet, $template, &$counts) {
+        Model::withoutEvents(function () use ($cabinet, $template, &$counts, &$made) {
             foreach ($template->taskTemplates as $taskTemplate) {
                 $task = $cabinet->tasks()->create([
                     'cabinet_task_template_id' => $taskTemplate->id,
@@ -46,6 +47,7 @@ class CabinetTemplateService
                         'status' => 'not_started',
                         'progress' => 0,
                     ] + CabinetSubtask::initialAssignment($subtaskTemplate->department_id));
+                    $made[$subtaskTemplate->id] = $subtask->id;
                     $counts['subtasks']++;
                     $counts['assigned'] += $subtask->department_id ? 1 : 0;
 
@@ -62,6 +64,8 @@ class CabinetTemplateService
                 }
             }
         });
+
+        app(SubtaskPairs::class)->copyFromTemplate($made);
 
         ActivityLog::record(
             $cabinet->project_id,

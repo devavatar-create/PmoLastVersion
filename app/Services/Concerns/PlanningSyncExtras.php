@@ -428,7 +428,7 @@ trait PlanningSyncExtras
     private function requireDateLabel(?int $deptId): void
     {
         if (! app(HandoffService::class)->dateLabel($deptId)) {
-            throw new PlanningRejected('แผนกนี้ยังไม่ได้ตั้งให้ส่งวันที่ต่อ (ตั้งค่า › การส่งต่องาน)');
+            throw new PlanningRejected('แผนกนี้ยังไม่ได้ตั้งชื่อวันที่ส่งต่อ (ตั้งค่า › แผนก)');
         }
     }
 

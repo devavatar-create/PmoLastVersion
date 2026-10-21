@@ -42,7 +42,9 @@ class DepartmentController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'color' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'icon' => ['nullable', 'string', 'max:8'],
+            'handoff_date_label' => ['nullable', 'string', 'max:40'],
         ]);
+        $data['handoff_date_label'] = trim((string) ($data['handoff_date_label'] ?? '')) ?: null;
         $data['is_active'] = $request->boolean('is_active');
         $data['sees_all'] = $request->boolean('sees_all');
 

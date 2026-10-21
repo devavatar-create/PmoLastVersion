@@ -105,6 +105,11 @@
                         <x-text-input name="icon" maxlength="8" class="mt-1 block w-full" :value="$department->icon" />
                     </div>
                 </div>
+                <div>
+                    <x-input-label value="วันที่ที่แผนกนี้ลงให้งานที่เทียบด้วย (ไม่บังคับ)" />
+                    <x-text-input name="handoff_date_label" maxlength="40" placeholder="เช่น วันของเข้า" class="mt-1 block w-full" :value="$department->handoff_date_label" />
+                    <p class="mt-1 text-xs text-slate-500">เมื่อ Sub Task ของแผนกนี้ถูกเลือกเป็นคู่เทียบในเทมเพลต แต่ละรายการจะมีช่องวันที่นี้ ฝั่งที่เทียบจะได้แจ้งเตือนเมื่อถึงวันหรือเลยวัน</p>
+                </div>
                 <label class="flex items-start gap-2 text-sm text-slate-600">
                     <input type="checkbox" name="sees_all" value="1" @checked($department->sees_all) class="mt-0.5 rounded border-slate-300 text-blue-600">
                     <span>เห็นงานของทุกแผนก (อ่านอย่างเดียว เหมือน PM มองเห็น แต่ไม่ได้สิทธิ์จ่ายงาน/ลบ) — ช่องเดียวกับ “เห็นทุกโครงการ” ใน <a href="{{ route('settings.permissions.edit') }}" class="text-blue-600 hover:underline">สิทธิ์การใช้งาน</a></span>

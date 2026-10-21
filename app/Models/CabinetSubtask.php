@@ -201,21 +201,23 @@ class CabinetSubtask extends Model
         ];
     }
 
+    /** The Sub Tasks of the same cabinet whose checklist this one is shown next to, to compare (from the template, App\Services\SubtaskPairs). */
+    public function pairSources()
+    {
+        return $this->belongsToMany(self::class, 'cabinet_subtask_pairs', 'cabinet_subtask_id', 'source_subtask_id')->withTimestamps();
+    }
+
+    /** The Sub Tasks that compare with this one. */
+    public function pairReceivers()
+    {
+        return $this->belongsToMany(self::class, 'cabinet_subtask_pairs', 'source_subtask_id', 'cabinet_subtask_id');
+    }
+
     public function checklists()
     {
         return $this->hasMany(CabinetChecklist::class)->orderBy('sequence');
     }
 
-    public function getIsOverdueAttribute(): bool
-    {
-        return $this->isLateOn();
-    }
-
-    /**
-     * Calendar days left until due_date (negative = overdue by that many days).
-     */
-    public function getDaysRemainingAttribute(): ?int
-    {
     /**
      * Finished: its checklist is complete, or its department pressed "เสร็จงาน". The one rule every count uses (late work,
      * done counts, reminders, Planning), so the dashboard, the project page and Planning agree (PRODUCT.md "one number").
@@ -237,6 +239,16 @@ class CabinetSubtask extends Model
         return $query->where('status', '!=', self::STATUS_COMPLETED)->where('assignment_status', '!=', self::ASSIGNMENT_COMPLETED);
     }
 
+    public function getIsOverdueAttribute(): bool
+    {
+        return $this->isLateOn();
+    }
+
+    /**
+     * Calendar days left until due_date (negative = overdue by that many days).
+     */
+    public function getDaysRemainingAttribute(): ?int
+    {
         if (! $this->due_date) {
             return null;
         }

@@ -8,7 +8,8 @@ export default (cfg) => ({
     items: cfg.items || [],
     editable: !!cfg.editable,
     dateLabel: cfg.dateLabel || null,
-    linked: cfg.linked || [],     // Settings > การส่งต่องาน: the departments passing work to this one (read only)
+    linked: cfg.linked || [],     // the Sub Tasks this one compares with (template pairs), read only
+    receivers: cfg.receivers || [],   // the Sub Tasks comparing with this one
     today: (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })(),
     busy: false,
     selected: [],
@@ -27,6 +28,14 @@ export default (cfg) => ({
     isSelected(id) { return this.selected.includes(id); },
     toggleSelect(id) { this.selected = this.isSelected(id) ? this.selected.filter((x) => x !== id) : [...this.selected, id]; },
     toggleAll() { this.selected = this.allSelected ? [] : this.items.map((i) => i.id); },
+    // ---- comparing (template pairs): a row per item, the other list's item of the same name beside it ----
+    norm(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); },
+    matchesOf(item) { const n = this.norm(item.name); return this.linked.flatMap((l) => l.items.filter((i) => this.norm(i.text) === n).map((i) => ({ ...i, l }))); },
+    get unmatched() {
+        const mine = new Set(this.items.map((i) => this.norm(i.name)));
+        return this.linked.flatMap((l) => l.items.filter((i) => !mine.has(this.norm(i.text))).map((i) => ({ ...i, l })));
+    },
+    async addFromLinked(i) { await this.send({ type: 'add', items: [{ name: i.text }] }, { quiet: true, offerUndo: false }); },
     fmtDate(d) { if (!d) return ''; const [y, m, day] = d.split('-'); return day + '/' + m + '/' + (Number(y) + 543); },
 
     // ---- talking to the server ----
