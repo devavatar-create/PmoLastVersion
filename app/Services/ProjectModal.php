@@ -93,7 +93,7 @@ class ProjectModal
     private function departmentChips(Collection $items): Collection
     {
         return $items->groupBy('department_id')->map(function ($rows) {
-            $done = $rows->where('assignment_status', 'COMPLETED')->count();
+            $done = $rows->where('is_done', true)->count();
             $checkTotal = $rows->sum('checklists_total');
 
             return [

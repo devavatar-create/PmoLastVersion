@@ -126,16 +126,18 @@ class DepartmentDashboard
             ->whereNotNull('department_id')
             ->whereIn('assignment_status', self::ACTIVE_STATUSES)
             ->when($departmentIds !== null, fn ($q) => $q->whereIn('department_id', $departmentIds))
+            // a closed project is finished and read-only: its work is not the department's load (as on the overview)
+            ->whereHas('cabinetTask.cabinet.project', fn ($q) => $q->whereNotIn('status', [\App\Models\Project::STATUS_COMPLETED, \App\Models\Project::STATUS_CANCELLED]))
             ->withCount([
                 'checklists',
                 'checklists as completed_checklists_count' => fn ($q) => $q->where('is_completed', true),
             ])
-            ->get(['id', 'department_id', 'assignment_status', 'due_date']);
+            ->get(['id', 'department_id', 'status', 'assignment_status', 'due_date']);
     }
 
     private function isDone(CabinetSubtask $s): bool
     {
-        return $s->assignment_status === CabinetSubtask::ASSIGNMENT_COMPLETED;
+        return $s->isDone();
     }
 
     private function isOverdue(CabinetSubtask $s, Carbon $today): bool

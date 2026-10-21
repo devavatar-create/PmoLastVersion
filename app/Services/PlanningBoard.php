@@ -410,7 +410,7 @@ class PlanningBoard
             ],
             // what is still missing, for "ข้อมูลที่ยังขาด" (and the warning dot on the bar)
             'warnings' => array_filter([
-                'undated' => $rows->filter(fn ($s) => ! self::ymd($s, 'due_date') && $s->assignment_status !== CabinetSubtask::ASSIGNMENT_COMPLETED)->count(),
+                'undated' => $rows->filter(fn ($s) => ! self::ymd($s, 'due_date') && ! $s->isDone())->count(),
                 'free' => $allCabinets ? ($allCabinets->get($project->id) ?? collect())->sum(fn ($c) => ($this->free->get($c->id) ?? collect())->count()) : 0,
                 'cabNoDue' => $allCabinets ? ($allCabinets->get($project->id) ?? collect())->whereNull('due_date')->count() : 0,
                 'noManager' => $project->project_manager_id ? 0 : 1,
@@ -421,14 +421,14 @@ class PlanningBoard
             'deptStages' => $stages->map(fn (Collection $d, $deptId) => [
                 'deptId' => self::deptKey((int) $deptId),
                 'due' => $d->map(fn ($s) => self::ymd($s, 'due_date'))->filter()->max() ?? ($project->due_date ?? $today)->format('Y-m-d'),
-                'done' => $d->every(fn ($s) => $s->assignment_status === CabinetSubtask::ASSIGNMENT_COMPLETED),
+                'done' => $d->every->isDone(),
                 // the DEPARTMENT's status in this project: Admin / PM's pick, else worked out from its work (waiting / accepted / doing / done / late)
                 'statusId' => ($own = $this->deptStatuses->get($project->id)?->get((int) $deptId)) ?? $this->statusFor($d, $today),
                 'manualStatus' => $own !== null,
                 // the department's own range in this project, from its work (null = nothing dated yet) - what the calendar draws
                 'start' => $d->map(fn ($s) => self::ymd($s, 'start_date'))->filter()->min(),
                 'end' => $d->map(fn ($s) => self::ymd($s, 'due_date'))->filter()->max(),
-                'undated' => $d->filter(fn ($s) => ! self::ymd($s, 'due_date') && $s->assignment_status !== CabinetSubtask::ASSIGNMENT_COMPLETED)->count(),
+                'undated' => $d->filter(fn ($s) => ! self::ymd($s, 'due_date') && ! $s->isDone())->count(),
                 'fields' => (object) ($user->allows('data.other_fields') || (int) $deptId === (int) $user->department_id ? ($this->fieldValues->get($project->id)?->get((int) $deptId) ?? []) : []),
                 'pmo' => $this->workflow($d, (int) $deptId, $user),
             ])->values()->all(),
@@ -454,7 +454,7 @@ class PlanningBoard
         $deptRanges = $rows->groupBy('department_id')->mapWithKeys(fn ($d, $deptId) => [self::deptKey((int) $deptId) => [
             'start' => $d->map(fn ($s) => self::ymd($s, 'start_date'))->filter()->min(),
             'end' => $d->map(fn ($s) => self::ymd($s, 'due_date'))->filter()->max(),
-            'done' => $d->every(fn ($s) => $s->assignment_status === CabinetSubtask::ASSIGNMENT_COMPLETED),
+            'done' => $d->every->isDone(),
         ]])->all();
 
         return [
@@ -516,7 +516,7 @@ class PlanningBoard
     /** Worst-first: overdue, then all done, then in progress, then accepted, else waiting. Returns the page id of a built-in status. */
     private function statusFor(Collection $rows, \Carbon\Carbon $today): string
     {
-        $done = fn ($s) => $s->assignment_status === CabinetSubtask::ASSIGNMENT_COMPLETED;
+        $done = fn ($s) => $s->isDone();   // checklist complete or "เสร็จงาน" pressed (CabinetSubtask::isDone)
         $ids = BoardStatus::PAGE_IDS;
 
         return match (true) {

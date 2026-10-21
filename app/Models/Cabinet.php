@@ -78,7 +78,7 @@ class Cabinet extends Model
     public function getIsOverdueAttribute(): bool
     {
         return $this->due_date
-            && $this->due_date->isPast()
+            && $this->due_date->lt(today())   // the due day itself is not late yet (same as CabinetSubtask::isLateOn)
             && $this->status !== self::STATUS_COMPLETED;
     }
 

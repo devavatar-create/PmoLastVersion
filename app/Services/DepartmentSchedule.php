@@ -120,7 +120,7 @@ class DepartmentSchedule
     {
         $cabinet = $subtask->cabinetTask->cabinet;
         $project = $cabinet->project;
-        $completed = $subtask->assignment_status === CabinetSubtask::ASSIGNMENT_COMPLETED;
+        $completed = $subtask->isDone();
         $daysRemaining = $subtask->due_date ? (int) $today->diffInDays($subtask->due_date, false) : null;
 
         return [
@@ -155,6 +155,7 @@ class DepartmentSchedule
             'priority_label' => Project::$priorities[$project->priority] ?? $project->priority,
             'assignment_status' => $subtask->assignment_status,
             'assignment_status_label' => $subtask->assignment_status_label,
+            'is_done' => $completed,
             'is_overdue' => $daysRemaining !== null && $daysRemaining < 0 && ! $completed,
             'is_near_due' => $daysRemaining !== null && $daysRemaining >= 0 && $daysRemaining <= 3 && ! $completed,
             'days_remaining' => $daysRemaining,

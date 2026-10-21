@@ -165,6 +165,19 @@ class Project extends Model
     }
 
     /** Only the projects this person may see (App\Services\WorkScope - the same rule as opening one). */
+    /**
+     * In progress and past its due date ($late = false: in progress and not past it, or with no due date). One rule for
+     * the dashboard's "ล่าช้า" / "ตามแผน" counts and the project list they link to.
+     */
+    public function scopeRunningLate($query, bool $late = true)
+    {
+        $query->where('status', self::STATUS_IN_PROGRESS);
+
+        return $late
+            ? $query->whereNotNull('due_date')->whereDate('due_date', '<', today())
+            : $query->where(fn ($q) => $q->whereNull('due_date')->orWhereDate('due_date', '>=', today()));
+    }
+
     public function scopeVisibleTo($query, User $user)
     {
         return \App\Services\WorkScope::visibleProjects($query, $user);

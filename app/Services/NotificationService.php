@@ -334,6 +334,7 @@ class NotificationService
         $rows = CabinetSubtask::query()
             ->whereNotNull('department_id')->whereNotNull('due_date')
             ->whereIn('assignment_status', [CabinetSubtask::ASSIGNMENT_ASSIGNED, CabinetSubtask::ASSIGNMENT_ACCEPTED, CabinetSubtask::ASSIGNMENT_IN_PROGRESS])
+            ->notDone()   // a complete checklist is finished work even before "เสร็จงาน" is pressed
             ->whereDate('due_date', '<=', $today->copy()->addDays($soonDays))
             ->with('cabinetTask.cabinet.project', 'department')
             ->get()

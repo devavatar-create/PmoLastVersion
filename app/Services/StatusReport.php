@@ -62,6 +62,7 @@ class StatusReport
                 CabinetSubtask::ASSIGNMENT_ACCEPTED,
                 CabinetSubtask::ASSIGNMENT_IN_PROGRESS,
             ])
+            ->notDone()
             ->whereDate('due_date', '<=', $today->copy()->addDays(self::SOON_DAYS))
             ->when($scope !== null, fn ($q) => $q->whereIn('department_id', $scope))
             ->with('cabinetTask.cabinet.project', 'department')
