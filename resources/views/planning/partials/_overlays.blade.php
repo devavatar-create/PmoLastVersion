@@ -268,18 +268,3 @@
     </div>
 </template>
 
-{{-- a project's files (the same file manager as the project page) --}}
-<template x-if="filesFor && taskById(filesFor)">
-    <div class="fixed inset-0 z-[60] flex items-start justify-center bg-slate-900/40 p-2 sm:p-6" @click.self="closeFiles()" role="dialog" aria-modal="true" aria-label="ไฟล์โครงการ">
-        <div class="flex max-h-full w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div class="flex items-center gap-3 border-b border-slate-100 px-4 py-2.5">
-                <h3 class="min-w-0 flex-1 truncate text-base font-semibold text-slate-900" x-text="'📎 ไฟล์ · ' + taskById(filesFor).so + ' ' + taskById(filesFor).title"></h3>
-                <a :href="taskById(filesFor).pmoUrl + '?tab=attachments'" class="text-xs text-slate-500 hover:text-blue-600" title="เปิดที่หน้าโครงการ">เปิดที่หน้าโครงการ ↗</a>
-                <button type="button" @click="closeFiles()" class="text-2xl leading-none text-slate-400 hover:text-slate-600" aria-label="ปิด">&times;</button>
-            </div>
-            <div class="min-h-0 flex-1 overflow-y-auto p-3">
-                <x-file-manager expr="fileManager(filesCfg())" />
-            </div>
-        </div>
-    </div>
-</template>

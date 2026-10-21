@@ -175,11 +175,6 @@ class Project extends Model
         return $this->hasMany(Cabinet::class)->orderBy('sequence');
     }
 
-    public function attachments()
-    {
-        return $this->hasMany(ProjectAttachment::class)->latest();
-    }
-
     public function getTaskProgressAttribute(): int
     {
         if (array_key_exists('project_tasks_avg_progress', $this->attributes)) {

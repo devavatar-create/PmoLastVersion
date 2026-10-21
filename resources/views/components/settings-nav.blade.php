@@ -14,8 +14,6 @@
         $u?->isAdmin() ? ['แท็ก', route('settings.labels.index'), 'settings.labels.*'] : null,
         $u?->isAdmin() ? ['บอร์ด', route('settings.boards.index'), 'settings.boards.*'] : null,
         $u?->isAdmin() ? ['ฟิลด์เพิ่มเติม', route('settings.fields.index'), 'settings.fields.*'] : null,
-        $u?->isAdmin() ? ['การส่งต่องาน', route('settings.handoffs.index'), 'settings.handoffs.*'] : null,
-        $u?->isAdmin() ? ['ไฟล์และโฟลเดอร์', route('settings.files.edit'), 'settings.files.*'] : null,
         $u?->isAdmin() ? ['กฎการทำงาน', route('settings.rules.edit'), 'settings.rules.*'] : null,
         ['การแจ้งเตือน', route('settings.notifications.edit'), 'settings.notifications.*'],
         $u?->canManageTrash() ? ['ถังขยะ', route('trash.index'), 'trash.*'] : null,

@@ -165,8 +165,6 @@ class PlanningBoard
         $ids = $byProject->keys()->merge($empty->pluck('id'));
         $comments = $this->comments($ids, $user);
         $this->fieldValues = $this->loadFieldValues($ids);
-        // how many files each project has that this person may see (current versions, not in the trash) - the project window's "📎 ไฟล์ (n)"
-        $this->fileCounts = collect(app(ProjectFiles::class)->counts($ids->all(), $user));
         $this->deptStatuses = $ids->isEmpty() ? collect() : ProjectDepartmentStatus::whereIn('project_id', $ids)->with('boardStatus')->get()
             ->groupBy('project_id')->map(fn (Collection $g) => $g->mapWithKeys(fn ($r) => [$r->department_id => $r->boardStatus?->pageId()])->filter());
         // PMO: sub tasks nobody was given yet (e.g. straight from a template), so they can be handed out from the page
@@ -191,7 +189,7 @@ class PlanningBoard
         'projects' => 'id', 'cabinets' => 'id', 'cabinet_tasks' => 'id', 'cabinet_subtasks' => 'id', 'cabinet_checklists' => 'id',
         'activity_logs' => 'id', 'comment_attachments' => 'id', 'board_labels' => 'id', 'board_statuses' => 'id', 'boards' => 'id',
         'departments' => 'id', 'department_fields' => 'id', 'department_field_options' => 'id', 'project_field_values' => 'id',
-        'project_department_statuses' => 'id', 'department_links' => 'id', 'users' => 'id', 'project_files' => 'id',
+        'project_department_statuses' => 'id', 'department_links' => 'id', 'users' => 'id',
         // pivots: no id / timestamps - a swap (detach one, attach another) still changes the sum
         'project_user' => 'project_id * 100003 + user_id', 'board_label_project' => 'project_id * 100003 + board_label_id',
     ];
@@ -318,9 +316,6 @@ class PlanningBoard
     /** @var Collection<int, Collection> cabinet id => its sub tasks with no department yet (PMO roles only; filled per tasks() call) */
     private Collection $free;
 
-    /** @var Collection<int, int> project id => how many files it has (filled per tasks() call) */
-    private Collection $fileCounts;
-
     /** @var Collection<int, array> cabinet id => the sending departments' checklists (filled per tasks() call) */
     private Collection $linked;
 
@@ -443,7 +438,6 @@ class PlanningBoard
             'createdAt' => ($project->created_at ?? $today)->getTimestampMs(),
             'updatedAt' => ($project->updated_at ?? $today)->getTimestampMs(),
             'pmoUrl' => route('projects.show', $project),
-            'filesCount' => $user->allows('data.files') ? (int) ($this->fileCounts[$project->id] ?? 0) : null,   // null: no 📎 for them
         ];
     }
 

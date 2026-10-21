@@ -4,12 +4,10 @@ namespace App\Http\Middleware;
 
 use App\Models\ActivityLog;
 use App\Models\Cabinet;
-use App\Models\CabinetAttachment;
 use App\Models\CabinetChecklist;
 use App\Models\CabinetSubtask;
 use App\Models\CabinetTask;
 use App\Models\Project;
-use App\Models\ProjectAttachment;
 use App\Models\ProjectTask;
 use App\Services\WorkScope;
 use Closure;
@@ -18,7 +16,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Every signed-in route that names a project, or something inside one (cabinet, task, sub task, checklist item,
- * attachment, log line), opens only for people who see that project (WorkScope) - a typed URL included.
+ * log line), opens only for people who see that project (WorkScope) - a typed URL included.
  */
 class EnsureProjectVisible
 {
@@ -43,8 +41,7 @@ class EnsureProjectVisible
             $p instanceof CabinetTask => $p->cabinet?->project,
             $p instanceof CabinetSubtask => $p->cabinetTask?->cabinet?->project,
             $p instanceof CabinetChecklist => $p->subtask?->cabinetTask?->cabinet?->project,
-            $p instanceof ProjectTask, $p instanceof ProjectAttachment, $p instanceof ActivityLog => $p->project,
-            $p instanceof CabinetAttachment => $p->cabinet?->project,
+            $p instanceof ProjectTask, $p instanceof ActivityLog => $p->project,
             default => null,
         };
     }

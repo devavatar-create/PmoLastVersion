@@ -146,7 +146,7 @@ class PlanningController extends Controller
             'me' => ['id' => $user->id, 'name' => $user->name, 'avatar' => $user->avatar_url, 'deptId' => $user->department_id ? PlanningBoard::deptKey($user->department_id) : ''],
             'canTrash' => $user->canManageTrash(),
             // Settings > สิทธิ์การใช้งาน: what the page offers (the server leaves the data out and refuses the change anyway)
-            'perms' => ['finance' => $user->allows('data.finance'), 'contact' => $user->allows('data.contact'), 'files' => $user->allows('data.files'),
+            'perms' => ['finance' => $user->allows('data.finance'), 'contact' => $user->allows('data.contact'),
                 'comments' => $user->allows('data.comments'), 'export' => $user->allows('page.export'), 'projects' => $user->allows('page.projects')],
             // in-page trash and the PM list of the "new project" window (PMO roles only)
             'trash' => $user->canManageTrash() ? \App\Models\Project::onlyTrashed()->latest('deleted_at')->limit(100)->get(['id', 'project_no', 'project_name', 'deleted_at'])
@@ -165,12 +165,6 @@ class PlanningController extends Controller
                 ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'deptId' => $u->department_id ? PlanningBoard::deptKey($u->department_id) : '', 'pmo' => $u->canDispatchWork()])->all(),
             'urlsCabinet' => route('planning.cabinet', ['cabinet' => '__ID__']),
             'urlsCabinetPage' => route('cabinets.show', ['cabinet' => '__ID__']),   // the cabinet's own page (the full checklist editor)
-            // a project's files (the same file manager as the project page, opened from the project window)
-            'urlsFiles' => [
-                'tree' => route('project-files.tree', ['project' => '__PID__']), 'index' => route('project-files.index', ['project' => '__PID__']),
-                'upload' => route('project-files.upload', ['project' => '__PID__']), 'ops' => route('project-files.ops', ['project' => '__PID__']),
-                'zip' => route('project-files.zip', ['project' => '__PID__']), 'versions' => route('project-files.versions', ['file' => '__ID__']),
-            ],
             'managers' => $user->canDispatchWork() ? \App\Models\User::whereIn('role', [\App\Models\User::ROLE_ADMIN, \App\Models\User::ROLE_PROJECT_MANAGER])->where('is_active', true)->orderBy('name')->get(['id', 'name'])->all() : [],
             'people' => $this->mentionablePeople($user),     // for the @ picker (the server re-checks every tag)
             'open' => $request->integer('project') ?: null,  // a notification's link: open this project's window on load

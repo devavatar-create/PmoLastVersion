@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Project data and dates (projects, cabinets, tasks, sub task records, attachments, templates) are changed by Admin /
+ * Project data and dates (projects, cabinets, tasks, sub task records, templates) are changed by Admin /
  * Project Manager only. Departments still do their work everywhere: accept / start / finish, tick and manage checklists,
  * fill in their extra fields, comment.
  */

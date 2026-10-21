@@ -13,8 +13,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Enforced at the model layer (GuardsClosedProject) so no controller can forget
  * it, plus explicitly where saves bypass model events (SubtaskAssignmentService
- * uses saveQuietly()) and for file attachments, which aren't models of the
- * guarded kind. Status lookups are memoised per request: applying a template
+ * uses saveQuietly()). Status lookups are memoised per request: applying a template
  * creates hundreds of rows and each one asks.
  */
 class ProjectLock

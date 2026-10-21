@@ -52,8 +52,8 @@ class EditPermissionTest extends TestCase
     {
         $guarded = collect(Route::getRoutes()->getRoutes())->filter(fn ($r) => in_array('pmo', $r->gatherMiddleware(), true))->map->getName()->values();
         foreach (['projects.create', 'projects.store', 'projects.edit', 'projects.update', 'projects.destroy', 'project-tasks.store', 'project-tasks.update', 'project-tasks.destroy',
-            'project-attachments.store', 'project-attachments.destroy', 'cabinets.store', 'cabinets.copy', 'cabinets.edit', 'cabinets.update', 'cabinets.destroy',
-            'cabinet-attachments.store', 'cabinet-attachments.destroy', 'cabinet-tasks.update', 'cabinet-subtasks.update'] as $name) {
+            'cabinets.store', 'cabinets.copy', 'cabinets.edit', 'cabinets.update', 'cabinets.destroy',
+            'cabinet-tasks.update', 'cabinet-subtasks.update'] as $name) {
             $this->assertContains($name, $guarded, "$name must be Admin / PM only");
         }
         $templates = collect(Route::getRoutes()->getRoutes())->filter(fn ($r) => in_array('perm:edit.templates', $r->gatherMiddleware(), true))->map->getName()->values();

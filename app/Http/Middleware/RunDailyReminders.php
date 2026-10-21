@@ -36,7 +36,6 @@ class RunDailyReminders
 
         try {
             app(NotificationService::class)->sendReminders();
-            app(\App\Services\ProjectFiles::class)->purgeExpired();   // the files' trash empties itself after 30 days
         } catch (\Throwable $e) {
             Cache::forget('pmo:reminders:'.today()->toDateString());   // try again on the next page
             Log::warning('daily reminders failed: '.$e->getMessage());

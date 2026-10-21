@@ -75,11 +75,6 @@ class Cabinet extends Model
         return $this->hasMany(CabinetTask::class)->orderBy('sequence');
     }
 
-    public function attachments()
-    {
-        return $this->hasMany(CabinetAttachment::class)->latest();
-    }
-
     public function getIsOverdueAttribute(): bool
     {
         return $this->due_date

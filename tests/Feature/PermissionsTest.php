@@ -76,7 +76,6 @@ class PermissionsTest extends TestCase
         $this->actingAs($this->member)->get(route('projects.show', $this->ours))->assertOk();
         $this->actingAs($this->member)->get(route('projects.show', $this->theirs))->assertForbidden();
         $this->actingAs($this->member)->get(route('cabinets.show', $this->theirs->cabinets()->first()))->assertForbidden();
-        $this->actingAs($this->member)->getJson(route('project-files.tree', $this->theirs))->assertForbidden();
 
         $list = $this->actingAs($this->member)->get(route('projects.index'))->assertOk();
         $list->assertSee('P-OURS')->assertDontSee('P-THEIRS');
@@ -169,22 +168,21 @@ class PermissionsTest extends TestCase
         $this->assertSame(['X', '1250000.00', '225000.00', '081-111-2222'], [$p->project_name, $p->contract_value, $p->margin, $p->customer_phone], 'the old values stay');
     }
 
-    public function test_files_and_comments_can_be_taken_away(): void
+    public function test_comments_can_be_taken_away(): void
     {
-        $this->allow($this->busbar, ['data.files' => false, 'data.comments' => false]);
+        $this->allow($this->busbar, ['data.comments' => false]);
 
         $page = $this->actingAs($this->member)->get(route('projects.show', $this->ours))->assertOk();
-        $page->assertDontSee("tab = 'attachments'", false)->assertDontSee("tab = 'comment'", false)->assertDontSee("tab = 'activity'", false);
-        $this->actingAs($this->member)->getJson(route('project-files.tree', $this->ours))->assertForbidden();
+        $page->assertDontSee("tab = 'comment'", false)->assertDontSee("tab = 'activity'", false);
         $this->actingAs($this->member)->getJson(route('projects.activity-tree', $this->ours))->assertForbidden();
         $this->actingAs($this->member)->post(route('projects.notes.store', $this->ours), ['note' => 'hi'])->assertForbidden();
         $this->actingAs($this->member)->postJson(route('planning.comment'), ['taskId' => 'p'.$this->ours->id, 'text' => 'hi'])->assertForbidden();
         $this->assertSame(0, ActivityLog::where('action', 'note')->count());
 
         $task = collect(app(PlanningBoard::class)->tasks($this->member))->firstWhere('id', 'p'.$this->ours->id);
-        $this->assertSame([[], null], [$task['comments'], $task['filesCount']]);
+        $this->assertSame([], $task['comments']);
         $config = $this->actingAs($this->member)->get(route('planning.board'))->viewData('config');
-        $this->assertSame(['finance' => false, 'contact' => false, 'files' => false, 'comments' => false, 'export' => false, 'projects' => true], $config['perms']);
+        $this->assertSame(['finance' => false, 'contact' => false, 'comments' => false, 'export' => false, 'projects' => true], $config['perms']);
     }
 
     public function test_other_departments_extra_fields_follow_the_table(): void

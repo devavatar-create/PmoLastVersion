@@ -25,7 +25,6 @@
                     </button>
                     <button type="button" x-show="isPmo" @click="shiftProject(cur)" class="rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100" title="เลื่อนวันของโครงการ ตู้ และงานที่ยังไม่เสร็จพร้อมกัน">⇆ เลื่อนทั้งโครงการ</button>
                     <button type="button" x-show="isPmo" @click="duplicateProject(cur)" class="rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100" title="คัดลอกโครงการนี้ (พร้อมตู้ งาน checklist)">⧉ คัดลอก</button>
-                    <button type="button" x-show="perms.files" @click="openFiles(cur)" class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100" title="ไฟล์ของโครงการนี้ (โฟลเดอร์ เหมือนในคอม)">📎 ไฟล์ <span x-show="cur.filesCount" class="rounded-full bg-slate-100 px-1.5 text-xs tabular-nums" x-text="cur.filesCount"></span></button>
                     <button type="button" @click="openProjectDash(cur.id)" class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100" title="แดชบอร์ดของโครงการนี้">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></svg>แดชบอร์ด
                     </button>
@@ -319,9 +318,6 @@
                             <button type="button" role="tab" @click="feedTab = 'activity'" :aria-selected="feedTab === 'activity'" class="rounded-full px-2.5 py-1 text-[13px] font-bold" :class="feedTab === 'activity' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-200'">Activity</button>
                             <button type="button" role="tab" x-show="cur.logUrl" @click="openLog()" :aria-selected="feedTab === 'log'" class="rounded-full px-2.5 py-1 text-[13px] font-bold" :class="feedTab === 'log' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-200'" title="บันทึกการเปลี่ยนแปลงทั้งหมดของโครงการ">การดำเนินการ</button>
                         </div>
-                        <a x-show="perms.files" :href="cur.pmoUrl + '?tab=attachments'" @click.prevent="openFiles(cur)" class="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[12.5px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800" title="ดู/แนบไฟล์ที่หน้าโครงการ">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.8l-8.5 8.5a5 5 0 01-7-7l9-9a3.3 3.3 0 014.7 4.7l-9 9a1.7 1.7 0 01-2.4-2.4l8.3-8.3"/></svg>ไฟล์แนบ
-                        </a>
                     </div>
                     <div x-show="feedTab === 'activity'" x-ref="feedBox" x-init="$nextTick(() => $el.scrollTop = $el.scrollHeight)" class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3.5 py-3">
                         <p x-show="cur.comments.length === 0" class="px-2 py-6 text-center text-xs leading-[1.7] text-slate-400">ยังไม่มีความเคลื่อนไหว<br>เขียนอัพเดตหรือความคิดเห็นได้ด้านล่าง</p>

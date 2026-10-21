@@ -3,7 +3,6 @@
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\CabinetChecklistController;
-use App\Http\Controllers\CabinetAttachmentController;
 use App\Http\Controllers\CabinetController;
 use App\Http\Controllers\CabinetSubtaskController;
 use App\Http\Controllers\CabinetTaskController;
@@ -13,7 +12,6 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MyDepartmentController;
 use App\Http\Controllers\PlanningController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\ProjectAttachmentController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TrashController;
@@ -87,8 +85,6 @@ Route::middleware(['auth', 'project.visible'])->group(function () {
     // project data and dates: 'pmo' = edit.manage (Admin / Project Manager by default); reading, comments and the department's work stay open
     Route::resource('projects', ProjectController::class)->middlewareFor(['create', 'store', 'edit', 'update', 'destroy'], 'pmo')->middlewareFor('index', 'perm:page.projects');
 
-    Route::post('projects/{project}/attachments', [ProjectAttachmentController::class, 'store'])->middleware('pmo')->name('project-attachments.store');
-    Route::delete('project-attachments/{attachment}', [ProjectAttachmentController::class, 'destroy'])->middleware('pmo')->name('project-attachments.destroy');
     Route::patch('projects/{project}/color', [ProjectController::class, 'updateColor'])->name('projects.color');
 
     Route::post('projects/{project}/tasks', [ProjectTaskController::class, 'store'])->middleware('pmo')->name('project-tasks.store');
@@ -102,9 +98,6 @@ Route::middleware(['auth', 'project.visible'])->group(function () {
     Route::put('cabinets/{cabinet}', [CabinetController::class, 'update'])->middleware('pmo')->name('cabinets.update');
     Route::delete('cabinets/{cabinet}', [CabinetController::class, 'destroy'])->middleware('pmo')->name('cabinets.destroy');
     Route::get('cabinets', [CabinetController::class, 'index'])->middleware('perm:page.cabinets')->name('cabinets.index');
-
-    Route::post('cabinets/{cabinet}/attachments', [CabinetAttachmentController::class, 'store'])->middleware('pmo')->name('cabinet-attachments.store');
-    Route::delete('cabinet-attachments/{attachment}', [CabinetAttachmentController::class, 'destroy'])->middleware('pmo')->name('cabinet-attachments.destroy');
 
     Route::put('cabinet-tasks/{cabinetTask}', [CabinetTaskController::class, 'update'])->middleware('pmo')->name('cabinet-tasks.update');
     Route::post('cabinet-subtasks/remind', [CabinetSubtaskController::class, 'remind'])->name('cabinet-subtasks.remind');   // "ทวงถาม" work still รอรับ
@@ -121,16 +114,6 @@ Route::middleware(['auth', 'project.visible'])->group(function () {
     Route::post('cabinet-subtasks/{cabinetSubtask}/copy-checklists', [CabinetChecklistController::class, 'copyChecklists'])->name('checklists.copy');
     Route::patch('checklists/{checklist}/toggle', [CabinetChecklistController::class, 'toggle'])->name('checklists.toggle');
     // the one checklist editor (cabinet page + template page): read the list / its move-copy choices, apply one operation
-    // the project file manager (folders like a computer): everyone who sees the project; ProjectFiles decides the rest
-    Route::controller(\App\Http\Controllers\ProjectFilesController::class)->group(function () {
-        Route::get('projects/{project}/files/tree', 'tree')->name('project-files.tree');
-        Route::get('projects/{project}/files/zip', 'zip')->name('project-files.zip');
-        Route::get('projects/{project}/files', 'index')->name('project-files.index');
-        Route::post('projects/{project}/files', 'upload')->name('project-files.upload');
-        Route::post('projects/{project}/files/ops', 'ops')->name('project-files.ops');
-        Route::get('files/{file}/versions', 'versions')->name('project-files.versions');
-        Route::get('files/{file}', 'download')->name('project-files.download');
-    });
     Route::get('projects/{project}/checklist-bulk', [\App\Http\Controllers\ChecklistBulkController::class, 'options'])->middleware('pmo')->name('projects.checklist-bulk.options');
     Route::post('projects/{project}/checklist-bulk', [\App\Http\Controllers\ChecklistBulkController::class, 'run'])->middleware('pmo')->name('projects.checklist-bulk.run');
     Route::get('checklist-editor/{kind}/{id}', [\App\Http\Controllers\ChecklistEditorController::class, 'show'])->whereNumber('id')->name('checklist-editor.show');
@@ -195,12 +178,6 @@ Route::middleware(['auth', 'project.visible'])->group(function () {
         Route::get('permissions', [\App\Http\Controllers\Settings\PermissionController::class, 'edit'])->name('settings.permissions.edit');
         Route::put('permissions', [\App\Http\Controllers\Settings\PermissionController::class, 'update'])->name('settings.permissions.update');
         Route::delete('permissions', [\App\Http\Controllers\Settings\PermissionController::class, 'reset'])->name('settings.permissions.reset');
-        Route::get('files', [\App\Http\Controllers\Settings\FileSettingsController::class, 'edit'])->name('settings.files.edit');
-        Route::put('files', [\App\Http\Controllers\Settings\FileSettingsController::class, 'update'])->name('settings.files.update');
-        Route::get('handoffs', [\App\Http\Controllers\Settings\HandoffController::class, 'index'])->name('settings.handoffs.index');
-        Route::post('handoffs', [\App\Http\Controllers\Settings\HandoffController::class, 'store'])->name('settings.handoffs.store');
-        Route::put('handoffs/{link}', [\App\Http\Controllers\Settings\HandoffController::class, 'update'])->name('settings.handoffs.update');
-        Route::delete('handoffs/{link}', [\App\Http\Controllers\Settings\HandoffController::class, 'destroy'])->name('settings.handoffs.destroy');
         Route::patch('fields/{field}/chip', [\App\Http\Controllers\Settings\FieldController::class, 'toggleChip'])->name('settings.fields.chip');
         Route::get('fields', [\App\Http\Controllers\Settings\FieldController::class, 'index'])->name('settings.fields.index');
         Route::post('fields', [\App\Http\Controllers\Settings\FieldController::class, 'storeField'])->name('settings.fields.store');

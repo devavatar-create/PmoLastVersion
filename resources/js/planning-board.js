@@ -91,7 +91,6 @@ export default function registerPlanningBoard() {
             moreOpen: false,
             modalId: null,                    // open project modal
             stageDept: null,                  // open department popover (inside the modal)
-            filesFor: null,                   // the project whose files are open (the file manager window)
             dashProject: '',                  // the dashboard shows this one project ('' = every project in view)
             stagePos: { top: 0, left: 0 },
             cl: null,                         // open checklist popover: { taskId, cabId, top, left, adding: deptId|null }
@@ -442,15 +441,6 @@ export default function registerPlanningBoard() {
             },
 
             // =================================================== dashboard
-            // ---- a project's files: the project page's file manager, opened over the board ----
-            openFiles(t) { this.filesFor = t.id; },
-            filesCfg() {
-                const pid = String(this.filesFor || '').replace(/^p/, ''), u = config.urlsFiles || {};
-                const urls = {};
-                Object.keys(u).forEach((k) => { urls[k] = u[k].replace('__PID__', pid); });
-                return { start: null, isPmo: this.isPmo, urls };
-            },
-            closeFiles() { this.filesFor = null; this.refresh(true); },   // the "📎 ไฟล์ (n)" counts follow
             // a department's name as a tag in its own colour (the bars stay one colour, so the colour says who, not how far)
             deptTag(id) { const d = this.deptOf(id); return 'background-color:' + hexToRgba(d.color, 0.16) + ';border-color:' + hexToRgba(d.color, 0.55); },
             deptLate(s) { return !this.stageDone(s) && !!s.end && s.end < this.today; },
@@ -1003,7 +993,7 @@ export default function registerPlanningBoard() {
             openModal(id) { this.projectInUrl(id); this.modalId = id; this.replyTo = null; this.cabOpen = {}; this.feedTab = 'activity'; this.logTree.id = null; this.stageDept = null; this.cl = null; this.comment = ''; this.alertDept = ''; this.scrollFeed(); },
             setModalSize(size) { this.modalSize = size; try { localStorage.setItem('planning.modalSize', size); } catch (e) { /* storage blocked: it just won't be remembered */ } },
             closeModal() { this.modalId = null; this.stageDept = null; this.cl = null; this.projectInUrl(null); },
-            onEscape() { if (this.filesFor) return; if (this.dispatch) { this.dispatch = null; return; } if (this.cabDialog) { this.cabDialog = null; return; } if (this.viewer) { this.viewer = null; return; } if (this.statusPop) { this.statusPop = null; return; } if (this.newProject) { this.newProject = null; return; } if (this.drawer) { this.drawer = null; return; } if (this.cl) this.closeChecklist(); else if (this.stageDept) this.stageDept = null; else if (this.modalId) this.closeModal();  },
+            onEscape() { if (this.dispatch) { this.dispatch = null; return; } if (this.cabDialog) { this.cabDialog = null; return; } if (this.viewer) { this.viewer = null; return; } if (this.statusPop) { this.statusPop = null; return; } if (this.newProject) { this.newProject = null; return; } if (this.drawer) { this.drawer = null; return; } if (this.cl) this.closeChecklist(); else if (this.stageDept) this.stageDept = null; else if (this.modalId) this.closeModal();  },
             // ---- รอรับงาน: work this user may accept (their department's - or any, for Admin / PM allowed to act for departments) ----
             waitingList() {
                 return this.tasks.flatMap((t) => (t.deptStages || []).filter((s) => s.pmo && s.pmo.canAccept && (!this.dept || s.deptId === this.dept))

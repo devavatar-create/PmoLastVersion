@@ -2,7 +2,6 @@ import Alpine from 'alpinejs';
 import flatpickr from 'flatpickr';
 import Sortable from 'sortablejs';
 import checklistEditor from './checklist-editor';
-import fileManager from './file-manager';
 import registerPlanningBoard from './planning-board';
 
 window.Alpine = Alpine;
@@ -10,7 +9,6 @@ window.Sortable = Sortable;
 window.flatpickr = flatpickr; // for date fields created after page load (e.g. the project modal on My Department)
 
 Alpine.data('checklistEditor', checklistEditor);   // x-checklist-editor (cabinet + template pages)
-Alpine.data('fileManager', fileManager);           // x-file-manager (project + cabinet pages)
 registerPlanningBoard();                           // /planning/board's x-data="planningBoard(...)" 
 Alpine.start();
 

@@ -10,10 +10,9 @@ use Illuminate\Support\Str;
 /**
  * Shared by ProjectController::storeNote() and CabinetController::storeNote()
  * (the Project and Cabinet Comment tabs both post through the same
- * ActivityLog 'note' flow) - same upload approach (public/uploads, randomized
- * filename, defensive .htaccess, mime allowlist) as ProjectAttachmentController/
- * CabinetAttachmentController, just attached to a comment instead of a
- * Project/Cabinet directly.
+ * ActivityLog 'note' flow): public/uploads, randomized filename, defensive
+ * .htaccess, mime allowlist. Comments (chat) are the only place files are
+ * uploaded to.
  */
 class CommentAttachmentUploader
 {

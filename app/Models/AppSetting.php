@@ -31,9 +31,7 @@ class AppSetting extends Model
         'status_rules_locked' => [],            // Planning statuses (board_statuses ids) that status rules never overwrite
         'pmo_acts_for_departments' => false,    // Admin / PM may accept / start / finish work on a department's behalf (logged as such)
         'waiting_reminder_days' => 2,          // work still "รอรับ" after this many days: the department + PM are reminded (0 = off)
-        'file_default_folders' => ['เอกสารโครงการ'],   // the standard folders of every project: names, or [name, visibility, departments] (Settings > ไฟล์และโฟลเดอร์)
         'department_permissions' => [],       // Settings > สิทธิ์การใช้งาน: department id | 'none' => permission => bool (missing = App\Support\Access defaults)
-        'file_cabinet_folders' => 'work',     // 'work': a department sees the folders of the cabinets it has work in; 'all': every cabinet's
     ];
 
     private static ?array $memo = null;
