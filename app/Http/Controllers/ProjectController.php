@@ -44,7 +44,7 @@ class ProjectController extends Controller
             'departmentColors' => \App\Services\PlanningBoard::departmentColors(),
             'departmentNames' => \App\Models\Department::pluck('name', 'id'),
             'statuses' => Project::$statuses,
-            'filters' => $request->only(['q', 'status', 'priority']),
+            'filters' => $request->only(['q', 'status', 'priority', 'due']),
         ]);
     }
 
@@ -94,12 +94,21 @@ class ProjectController extends Controller
         }
 
         if ($status = $request->get('status')) {
-            $query->where('status', $status);
+            $status === 'not_started'   // the dashboard card "รอเริ่ม": Draft and Planning together
+                ? $query->whereIn('status', [Project::STATUS_DRAFT, Project::STATUS_PLANNING])
+                : $query->where('status', $status);
         }
 
         if (in_array($priority = $request->get('priority'), [Project::PRIORITY_URGENT, Project::PRIORITY_HIGH], true)) {   // the ⚑ ด่วน / ⚑ สูง buttons
             $query->where('priority', $priority);
         }
+
+        // the dashboard cards "ล่าช้า" / "ตามแผน": in progress and past / not past the due date (Project::scopeRunningLate)
+        match ($request->get('due')) {
+            'late' => $query->runningLate(),
+            'ontrack' => $query->runningLate(false),
+            default => null,
+        };
 
         return $query;
     }

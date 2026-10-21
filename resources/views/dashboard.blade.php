@@ -5,9 +5,32 @@
 
     <div class="max-w-7xl mx-auto space-y-6">
 
+        {{-- the two views, and the CEO report (opens in a new tab, ready to print / Save as PDF) --}}
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <nav aria-label="มุมมองแดชบอร์ด" class="inline-flex rounded-xl bg-slate-200 p-1 text-sm font-semibold">
+                    @foreach (['exec' => 'ภาพรวมผู้บริหาร', 'dept' => 'งานตามแผนก'] as $key => $label)
+                        <a href="{{ route('dashboard', ['view' => $key]) }}" @if ($view === $key) aria-current="page" @endif
+                           class="rounded-lg px-3.5 py-1.5 {{ $view === $key ? 'bg-white text-ae-navy shadow-sm' : 'text-slate-600 hover:text-ae-navy' }}">{{ $label }}</a>
+                    @endforeach
+                </nav>
+            </div>
+            @if ($view !== 'exec')   {{-- the overview has the button in its brand bar --}}
+            <a href="{{ route('reports.ceo') }}" target="_blank" rel="noopener"
+               class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+                ส่งออกรายงาน CEO
+            </a>
+            @endif
+        </div>
+
+        @if ($view === 'exec')
+            @include('dashboard._executive')
+        @else
+
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <x-card>
-                <p class="text-xs font-medium text-slate-500">โครงการที่กำลังดำเนินการ</p>
+                <p class="text-xs font-medium text-slate-500">โครงการที่กำลังทำ (In Progress)</p>
                 <p class="text-2xl font-bold text-slate-900 mt-1">{{ $activeProjectsCount }}</p>
             </x-card>
             <x-card>
@@ -52,10 +75,10 @@
                     {{-- Department filter pills (admin/PM only - everyone else is pinned to their own department server-side). --}}
                     <nav class="flex flex-wrap items-center gap-1.5 text-xs" aria-label="กรองแผนก">
                         <span class="text-slate-500">กรองแผนก:</span>
-                        <a href="{{ route('dashboard') }}"
+                        <a href="{{ route('dashboard', ['view' => 'dept']) }}"
                            class="rounded-full px-3 py-1 font-medium border {{ $filterDepartmentId === null ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50' }}">ทุกแผนก</a>
                         @foreach ($filterDepartments as $d)
-                            <a href="{{ route('dashboard', ['department' => $d->id]) }}"
+                            <a href="{{ route('dashboard', ['view' => 'dept', 'department' => $d->id]) }}"
                                class="rounded-full px-3 py-1 font-medium border {{ $filterDepartmentId === $d->id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50' }}">{{ $d->name }}</a>
                         @endforeach
                     </nav>
@@ -168,5 +191,6 @@
                 </table>
             </div>
         </x-card>
+        @endif
     </div>
 </x-app-layout>

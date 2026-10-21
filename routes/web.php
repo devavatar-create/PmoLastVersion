@@ -31,6 +31,8 @@ Route::get('/', function () {
 // 'perm:…' = Settings > สิทธิ์การใช้งาน (App\Support\Access).
 Route::middleware(['auth', 'project.visible'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('perm:page.dashboard')->name('dashboard');
+    Route::get('reports/production', [\App\Http\Controllers\ProductionReportController::class, 'index'])->middleware('perm:page.dashboard')->name('reports.production');   // รายงานการผลิต
+    Route::get('reports/ceo', [DashboardController::class, 'report'])->middleware('perm:page.dashboard')->name('reports.ceo');
 
     Route::get('projects/export', [ProjectController::class, 'export'])->middleware('perm:page.export')->name('projects.export');
     Route::middleware('perm:data.comments')->group(function () {   // the change log and comments
@@ -100,9 +102,9 @@ Route::middleware(['auth', 'project.visible'])->group(function () {
     Route::get('cabinets', [CabinetController::class, 'index'])->middleware('perm:page.cabinets')->name('cabinets.index');
 
     Route::put('cabinet-tasks/{cabinetTask}', [CabinetTaskController::class, 'update'])->middleware('pmo')->name('cabinet-tasks.update');
+    Route::put('cabinet-subtasks/{cabinetSubtask}/pairs', [\App\Http\Controllers\TemplatePairController::class, 'updateCabinet'])->name('cabinet-subtasks.pairs');   // "แก้คู่เทียบ" of one cabinet (Admin / PM)
     Route::post('cabinet-subtasks/remind', [CabinetSubtaskController::class, 'remind'])->name('cabinet-subtasks.remind');   // "ทวงถาม" work still รอรับ
     Route::post('cabinet-subtasks/bulk-department', [CabinetSubtaskController::class, 'bulkDepartment'])->name('cabinet-subtasks.bulk-department');   // many at once (cabinet page ticks / a whole step)
-    Route::put('cabinet-subtasks/{cabinetSubtask}/pairs', [\App\Http\Controllers\TemplatePairController::class, 'updateCabinet'])->name('cabinet-subtasks.pairs');   // "แก้คู่เทียบ" of one cabinet (Admin / PM)
     Route::put('cabinet-subtasks/{cabinetSubtask}', [CabinetSubtaskController::class, 'update'])->middleware('pmo')->name('cabinet-subtasks.update');
     Route::delete('cabinet-tasks/{cabinetTask}', [CabinetTaskController::class, 'destroy'])->middleware('pmo')->name('cabinet-tasks.destroy');
     Route::delete('cabinet-subtasks/{cabinetSubtask}', [CabinetSubtaskController::class, 'destroy'])->middleware('pmo')->name('cabinet-subtasks.destroy');
@@ -142,10 +144,10 @@ Route::middleware(['auth', 'project.visible'])->group(function () {
     Route::patch('subtask-templates/reorder', [CabinetTemplateItemController::class, 'reorderSubtasks'])->name('subtask-templates.reorder');
     Route::put('subtask-templates/{subtaskTemplate}', [CabinetTemplateItemController::class, 'updateSubtask'])->name('subtask-templates.update');
     Route::delete('subtask-templates/{subtaskTemplate}', [CabinetTemplateItemController::class, 'destroySubtask'])->name('subtask-templates.destroy');
-    Route::post('subtask-templates/{subtaskTemplate}/checklist-templates', [CabinetTemplateItemController::class, 'storeChecklist'])->name('checklist-templates.store');
-    Route::patch('checklist-templates/reorder', [CabinetTemplateItemController::class, 'reorderChecklists'])->name('checklist-templates.reorder');
     Route::put('subtask-templates/{subtaskTemplate}/pairs', [\App\Http\Controllers\TemplatePairController::class, 'update'])->name('subtask-templates.pairs');   // "เทียบกับ…"
     Route::post('cabinet-templates/{cabinetTemplate}/pairs/apply', [\App\Http\Controllers\TemplatePairController::class, 'apply'])->name('cabinet-templates.pairs.apply');
+    Route::post('subtask-templates/{subtaskTemplate}/checklist-templates', [CabinetTemplateItemController::class, 'storeChecklist'])->name('checklist-templates.store');
+    Route::patch('checklist-templates/reorder', [CabinetTemplateItemController::class, 'reorderChecklists'])->name('checklist-templates.reorder');
     Route::put('checklist-templates/{checklistTemplate}', [CabinetTemplateItemController::class, 'updateChecklist'])->name('checklist-templates.update');
     Route::delete('checklist-templates/{checklistTemplate}', [CabinetTemplateItemController::class, 'destroyChecklist'])->name('checklist-templates.destroy');
     });

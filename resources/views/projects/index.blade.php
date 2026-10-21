@@ -8,6 +8,13 @@
         $link = fn (array $change) => route('projects.index', array_filter(array_merge($filters, $change), fn ($v) => $v !== null && $v !== ''));
         $status = $filters['status'] ?? '';
         $priority = $filters['priority'] ?? '';
+        // from the dashboard cards: a chip that says what the list is narrowed to, and takes it off
+        $chip = match (true) {
+            ($filters['due'] ?? '') === 'late' => ['ล่าช้า (เลยวันส่ง)', ['due' => null]],
+            ($filters['due'] ?? '') === 'ontrack' => ['ตามแผน (ยังไม่เลยวันส่ง)', ['due' => null]],
+            $status === 'not_started' => ['รอเริ่ม (Draft / Planning)', ['status' => null]],
+            default => null,
+        };
     @endphp
 
     <div class="max-w-screen-2xl mx-auto space-y-4">
@@ -15,7 +22,7 @@
         {{-- toolbar, in Planning's style: search, a segmented status switch, the ⚑ priority buttons --}}
         <div class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <form method="GET" class="relative min-w-0 flex-1 basis-64 sm:max-w-xs">
-                @foreach (['status' => $status, 'priority' => $priority] as $k => $v)
+                @foreach (['status' => $status, 'priority' => $priority, 'due' => $filters['due'] ?? ''] as $k => $v)
                     @if ($v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endif
                 @endforeach
                 <label for="project-search" class="sr-only">ค้นหาโครงการ</label>
@@ -42,6 +49,12 @@
                     </a>
                 @endforeach
             </div>
+
+            @if ($chip)
+                <a href="{{ $link($chip[1]) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100" title="เอาตัวกรองนี้ออก">
+                    เฉพาะ{{ $chip[0] }} <span aria-hidden="true">×</span><span class="sr-only">เอาตัวกรองออก</span>
+                </a>
+            @endif
 
             <div class="ml-auto flex items-center gap-2">
                 @if (auth()->user()->allows('page.export'))
