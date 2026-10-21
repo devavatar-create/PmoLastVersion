@@ -40,7 +40,7 @@ export default {
     theme: {
         extend: {
             fontFamily: {
-                sans: ['Figtree', ...defaultTheme.fontFamily.sans],
+                sans: ['Anuphan', ...defaultTheme.fontFamily.sans],
             },
             colors: {
                 blue: electric,
