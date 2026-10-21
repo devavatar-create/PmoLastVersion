@@ -53,7 +53,7 @@ class ProjectOverviewTest extends TestCase
 
     private function build(User $user): array
     {
-        $this->project->load('cabinets.tasks.subtasks.department', 'cabinets.tasks.subtasks.owner', 'cabinets.cabinetTemplate', 'projectTasks');
+        $this->project->load('cabinets.tasks.subtasks.department', 'cabinets.tasks.subtasks.owner', 'cabinets.cabinetTemplate');
 
         return app(ProjectOverview::class)->build($this->project, $user);
     }
@@ -123,6 +123,43 @@ class ProjectOverviewTest extends TestCase
         $this->assertSame('RMU', $rows['MO-OK']['model']);
     }
 
+    public function test_progress_is_set_against_the_time_already_used(): void
+    {
+        // 08/09 → 23/10 is 45 days; by Wed 14/10, 36 of them are used
+        $s = $this->build($this->user('admin'))['summary'];
+        $this->assertSame([0, 80, 'behind'], [$s['progress'], $s['timeElapsed'], $s['pace']], 'nothing made, 80% of the time gone');
+
+        $this->cabinet('MO-DONE', '2026-10-01', 'completed');
+        $s = $this->build($this->user('admin'))['summary'];
+        $this->assertSame([100, 'on_track'], [$s['progress'], $s['pace']]);
+
+        $this->project->update(['start_date' => '2026-10-12', 'due_date' => '2026-12-21']);   // 2 of 70 days: 3%
+        $this->project->cabinets()->update(['progress' => 0]);
+        $s = $this->build($this->user('admin'))['summary'];
+        $this->assertSame([3, 'watch'], [$s['timeElapsed'], $s['pace']], 'trailing by no more than '.ProjectOverview::PACE_WATCH_POINTS.' points');
+
+        $this->project->update(['start_date' => null]);
+        $this->assertNull($this->build($this->user('admin'))['summary']['pace'], 'no start date, nothing to compare');
+    }
+
+    public function test_the_table_drops_the_words_every_mo_starts_with(): void
+    {
+        $this->cabinet('ถนนวิทยุ Modify RMU โรงแรม Indigo', '2026-10-20');
+        $this->cabinet('ถนนวิทยุ Modify (RMU Siemens) TR201', '2026-10-20', lateDays: 2);
+
+        $o = $this->build($this->user('admin'));
+        $rows = collect($o['rows'])->keyBy('mo');
+
+        $this->assertSame('ถนนวิทยุ Modify', $o['moPrefix']);
+        $this->assertSame(['RMU โรงแรม Indigo', '(RMU Siemens) TR201'], [$rows['ถนนวิทยุ Modify RMU โรงแรม Indigo']['site'], $rows['ถนนวิทยุ Modify (RMU Siemens) TR201']['site']]);
+        $this->assertSame('เขียนแบบ', $rows['ถนนวิทยุ Modify RMU โรงแรม Indigo']['currentDept'], 'the department on the current step');
+        $this->assertSame([1, 2], [$rows['ถนนวิทยุ Modify RMU โรงแรม Indigo']['no'], $rows['ถนนวิทยุ Modify (RMU Siemens) TR201']['no']], 'numbered in the project\'s order');
+
+        $this->cabinet('MO-9', '2026-10-20');   // nothing in common any more
+        $o = $this->build($this->user('admin'));
+        $this->assertSame(['', 'MO-9'], [$o['moPrefix'], collect($o['rows'])->firstWhere('mo', 'MO-9')['site']]);
+    }
+
     public function test_the_page_opens_on_project_information_with_the_tabs_and_no_overview_tab(): void
     {
         $this->cabinet('ถนนวิทยุ Modify RMU โรงแรม Indigo', '2026-10-20');
@@ -131,8 +168,12 @@ class ProjectOverviewTest extends TestCase
         foreach ([null, 'project', 'cabinets', 'overview'] as $tab) {
             $html = $this->actingAs($admin)->get(route('projects.show', array_filter([$this->project, 'tab' => $tab])))->assertOk()
                 ->assertSee("tab: 'info'", false)
-                ->assertSeeInOrder(['ข้อมูลโครงการ', 'ไฟล์ (', 'Comment', 'Activity Log'])
-                ->assertSee('ความคืบหน้าโครงการ')->assertSee('ตู้ล่าช้ากว่ากำหนด')->assertSee('ตู้ / ใบสั่งผลิต (MO)')
+                ->assertSeeInOrder(['ข้อมูลโครงการ', 'Comment', 'Activity Log'])->assertDontSee("tab = 'attachments'", false)
+                ->assertSeeInOrder(['รายละเอียดโครงการ', 'โครงการ', 'กำหนดการ', 'ทีมและการติดต่อ', 'สัญญาและการเงิน'])
+                ->assertSee('ความคืบหน้าการผลิต')->assertSee('เวลาผ่านไป 80%')->assertSee('ต้องตาม')->assertSee('ตู้ / ใบสั่งผลิต')
+                ->assertSee('ไม่มี: ตู้ล่าช้ากว่ากำหนด', false)   // a zero alert is named quietly, not shown as a chip
+                ->assertDontSee('งานบริหารโครงการ')->assertDontSee('ยังไม่กรอก')
+                ->assertSee('id="project-details" x-show="more" x-cloak', false)   // the full details start folded
                 ->getContent();
             $this->assertStringNotContainsString('>ภาพรวม<', $html, 'no ภาพรวม tab');
             // the table is filled from @js() data (quotes and Thai escaped): look for the row the same way

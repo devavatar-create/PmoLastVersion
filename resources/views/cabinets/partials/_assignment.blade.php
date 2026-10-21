@@ -16,12 +16,14 @@
     ])->filter()->implode(' · ');
 @endphp
 @php $step = ['UNASSIGNED' => 0, 'ASSIGNED' => 1, 'ACCEPTED' => 2, 'IN_PROGRESS' => 3, 'COMPLETED' => 4][$subtask->assignment_status] ?? 0; @endphp
-{{-- จ่าย → รับ → เริ่ม → เสร็จ at a glance --}}
-<span class="inline-flex gap-0.5" role="img" aria-label="ขั้นการจ่ายงาน {{ $step }} จาก 4 (จ่าย → รับ → เริ่ม → เสร็จ)" title="จ่าย → รับ → เริ่ม → เสร็จ">
+{{-- จ่าย → รับ → เริ่ม → เสร็จ at a glance (the cabinet page leaves it out: 'stepBar' => false) --}}
+@if ($stepBar ?? true)
+<span class="inline-flex gap-0.5" data-step-bar role="img" aria-label="ขั้นการจ่ายงาน {{ $step }} จาก 4 (จ่าย → รับ → เริ่ม → เสร็จ)" title="จ่าย → รับ → เริ่ม → เสร็จ">
     @for ($i = 1; $i <= 4; $i++)
         <span class="h-1.5 w-3 rounded-full {{ $i <= $step ? ($step === 4 ? 'bg-emerald-500' : 'bg-[#0F4C81]') : 'bg-slate-200' }}"></span>
     @endfor
 </span>
+@endif
 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap {{ $badge }}" data-assignment-status
       @if ($trail) title="{{ $trail }}" @endif>{{ $subtask->assignment_status_label }}</span>
 

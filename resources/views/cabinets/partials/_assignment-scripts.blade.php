@@ -22,7 +22,10 @@
 
     function applyAssignment(data) {
         const box = document.querySelector('[data-assignment="' + data.assignment.id + '"]');
-        if (box) box.innerHTML = data.html;
+        if (box) {
+            box.innerHTML = data.html;
+            if (box.hasAttribute('data-no-step-bar')) box.querySelector('[data-step-bar]')?.remove();   // the cabinet page shows no 4-step bar
+        }
 
         // Keep the Cabinet page's Edit modal department field in step with the row, if present on this page.
         const modalSelect = document.querySelector('[data-modal-department="' + data.assignment.id + '"]');

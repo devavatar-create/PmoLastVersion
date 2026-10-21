@@ -127,7 +127,6 @@ class ProjectController extends Controller
     public function show(Project $project)
     {
         $project->load([
-            'projectTasks.owner',
             'cabinets.tasks.subtasks.department', 'cabinets.tasks.subtasks.owner', 'cabinets.cabinetTemplate',
             'projectManager', 'jobType',
         ]);
@@ -147,8 +146,6 @@ class ProjectController extends Controller
 
         return view('projects.show', [
             'project' => $project,
-            'projectTaskStatuses' => \App\Models\ProjectTask::$statuses,
-            'users' => User::orderBy('name')->get(),
             'cabinetTemplates' => \App\Models\CabinetTemplate::where('is_active', true)->get(),
             // For the Cabinet Quick Detail Panel's Assignment Modal (department
             // select) - same unfiltered query the Cabinet full page/Dispatch page

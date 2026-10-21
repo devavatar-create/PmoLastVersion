@@ -20,6 +20,9 @@ class ProjectOverview
     /** How many entries an alert's popover lists before "ดูทั้งหมด". */
     private const ALERT_LIMIT = 8;
 
+    /** How far (percentage points) production may trail the time used before the pace reads "ช้ากว่าเวลา" instead of "เฝ้าระวัง". */
+    public const PACE_WATCH_POINTS = 10;
+
     /** @var array<int, string> department id => colour, for this build */
     private array $colors = [];
 
@@ -28,18 +31,21 @@ class ProjectOverview
         $today = now()->startOfDay();
         $cabinets = $project->cabinets;
         $this->colors = PlanningBoard::departmentColors();   // the same department dots as Planning
-        $late = fn (CabinetSubtask $s) => $s->due_date && $s->due_date->lt($today) && $s->status !== CabinetSubtask::STATUS_COMPLETED;
+        $late = fn (CabinetSubtask $s) => $s->isLateOn($today);
 
         // the alerts list sub tasks: everyone in PMO sees all of them, a department member only their own department's
         $visible = $cabinets->flatMap->tasks->flatMap->subtasks
             ->when(! $user->canSeeAllWork(), fn ($c) => $c->where('department_id', $user->department_id));
 
         $rows = $cabinets->map(fn (Cabinet $c) => $this->row($c, $project, $late, $today));
+        $prefix = $this->sharedPrefix($rows->pluck('mo'));
 
         return [
             'summary' => $this->summary($project, $cabinets, $today),
             'alerts' => $this->alerts($cabinets, $visible, $late, $today),
-            'rows' => $rows->map(fn ($r) => collect($r)->except(['steps'])->all())->values()->all(),
+            // 'no': the cabinet's place in the project (by sequence), kept when the table is searched or filtered
+            'rows' => $rows->values()->map(fn ($r, $i) => collect($r)->except(['steps'])->put('no', $i + 1)->put('site', $prefix === '' ? $r['mo'] : mb_substr($r['mo'], mb_strlen($prefix)))->all())->all(),
+            'moPrefix' => trim($prefix),
             'types' => $cabinets->pluck('cabinet_type')->filter()->unique()->sort()->values()->all(),
             'groups' => $this->groups($rows),
             'cabinetCount' => $cabinets->count(),
@@ -51,10 +57,18 @@ class ProjectOverview
     private function summary(Project $project, Collection $cabinets, Carbon $today): array
     {
         $counts = $project->cabinet_summary;   // the model's own count by status
+        $progress = $project->production_progress;
+        $elapsed = $this->timeElapsed($project, $today);
 
         return [
-            'progress' => $project->production_progress,
-            'taskProgress' => $project->projectTasks->isNotEmpty() ? $project->task_progress : null,
+            'progress' => $progress,
+            // production against the share of the project's time already used (start → due); null when there is nothing to compare
+            'timeElapsed' => $elapsed,
+            'pace' => $elapsed === null ? null : match (true) {
+                $progress >= $elapsed => 'on_track',
+                $elapsed - $progress <= self::PACE_WATCH_POINTS => 'watch',
+                default => 'behind',
+            },
             'total' => $counts['total'],
             'completed' => $counts['completed'],
             'inProgress' => $counts['in_progress'],
@@ -66,6 +80,49 @@ class ProjectOverview
                 ? ($project->due_date->lt($today) ? 0 : app(WorkingDaysCalculator::class)->countWorkingDays($today, $project->due_date))
                 : null,
         ];
+    }
+
+    /** % of the start → due span used by today (0-100), or null for a closed project or one without both dates. */
+    private function timeElapsed(Project $project, Carbon $today): ?int
+    {
+        if ($project->isLocked() || ! $project->start_date || ! $project->due_date || ! $project->due_date->gt($project->start_date)) {
+            return null;
+        }
+
+        $span = $project->start_date->diffInDays($project->due_date);
+        $used = $project->start_date->diffInDays($today, false);
+
+        return (int) round(max(0, min(100, $used / $span * 100)));
+    }
+
+    /**
+     * The words every MO number starts with ("ถนนวิทยุ Modify "), so the table can show only what tells cabinets
+     * apart. Cut at a space, and only when every cabinet keeps some text of its own.
+     */
+    private function sharedPrefix(Collection $mos): string
+    {
+        $mos = $mos->filter()->values();
+        if ($mos->count() < 2) {
+            return '';
+        }
+
+        $prefix = $mos->reduce(function (?string $carry, string $mo) {
+            if ($carry === null) {
+                return $mo;
+            }
+            $n = 0;
+            $max = min(mb_strlen($carry), mb_strlen($mo));
+            while ($n < $max && mb_substr($carry, $n, 1) === mb_substr($mo, $n, 1)) {
+                $n++;
+            }
+
+            return mb_substr($carry, 0, $n);
+        });
+
+        $space = mb_strrpos($prefix, ' ');
+        $prefix = $space === false ? '' : mb_substr($prefix, 0, $space + 1);
+
+        return $mos->every(fn ($mo) => trim(mb_substr($mo, mb_strlen($prefix))) !== '') ? $prefix : '';
     }
 
     /**
@@ -82,7 +139,7 @@ class ProjectOverview
 
         $delayed = $cabinets->filter(fn (Cabinet $c) => $c->is_overdue)->sortBy(fn (Cabinet $c) => $c->due_date)->values();
         $lateTasks = $subtasks->filter($late)->sortBy(fn ($s) => $s->due_date)->values();
-        $soon = $subtasks->filter(fn ($s) => $s->due_date && $s->status !== CabinetSubtask::STATUS_COMPLETED
+        $soon = $subtasks->filter(fn ($s) => $s->due_date && ! $s->isDone()
             && $s->due_date->betweenIncluded($today, $today->copy()->addDays(StatusReport::SOON_DAYS - 1)))
             ->sortBy(fn ($s) => $s->due_date)->values();
         $waiting = $subtasks->where('assignment_status', CabinetSubtask::ASSIGNMENT_ASSIGNED)->filter(fn ($s) => $s->department_id);
@@ -131,7 +188,7 @@ class ProjectOverview
     {
         $steps = $c->tasks->values()->map(function ($task, $i) use ($late) {
             $first = $task->subtasks->first(fn ($s) => $s->department_id);
-            $open = $task->subtasks->first(fn ($s) => $s->status !== CabinetSubtask::STATUS_COMPLETED);
+            $open = $task->subtasks->first(fn ($s) => ! $s->isDone());
 
             return [
                 'no' => $i + 1,
@@ -140,6 +197,7 @@ class ProjectOverview
                 'color' => $first ? ($this->colors[$first->department_id] ?? '#94a3b8') : '#cbd5e1',
                 // who is on it: the first unfinished sub task's owner, else its department
                 'responsible' => $open ? ($open->owner?->name ?? $open->department?->name ?? '-') : '-',
+                'department' => ($open ?? $first)?->department?->name,
                 'subtasks' => $task->subtasks->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'department' => $s->department?->name, 'locked' => $s->is_department_locked])->all(),
             ];
         });
@@ -164,12 +222,13 @@ class ProjectOverview
             'progress' => (int) $c->progress,
             'current' => $current ? $current['label'] : 'ครบทุกขั้นตอน',
             'currentColor' => $current['color'] ?? '#cbd5e1',
+            'currentDept' => $current['department'] ?? null,
             'responsible' => $current['responsible'] ?? '-',
             'due' => $c->due_date?->thaiDate(), 'dueKey' => $c->due_date?->format('Y-m-d') ?? '',
             'daysLeft' => $c->status === Cabinet::STATUS_COMPLETED ? null : $days,
             'status' => $c->status, 'delayed' => $c->is_overdue,
             'risk' => $risk,
-            'pending' => $subtasks->where('status', '!=', CabinetSubtask::STATUS_COMPLETED)->count(),
+            'pending' => $subtasks->reject->isDone()->count(),
             'lateTasks' => $lateCount,
             'steps' => $steps->all(),
             'signature' => $steps->pluck('label')->implode("\n"),
