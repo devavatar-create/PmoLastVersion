@@ -117,10 +117,11 @@
                 </div>
 
                 <div x-show="viewMode === 'cards'" class="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-                    <template x-for="department in activeDepartments()" :key="department.id">
+                    {{-- every active department gets a card; one with nothing in the period and nothing held is faded (they come last) --}}
+                    <template x-for="department in summary.departments" :key="department.id">
                         <article @click="toggleFeedFilter(department.id)" @keydown.enter="toggleFeedFilter(department.id)" tabindex="0" role="button" :aria-pressed="feedFilter === department.id"
                                  class="cursor-pointer rounded-xl border bg-white p-4 shadow-sm transition duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-                                 :class="[feedFilter === department.id ? 'border-blue-600 ring-2 ring-blue-600' : 'border-slate-200 hover:border-slate-300', highlightedDepartments[department.id] ? 'bg-blue-50' : '']">
+                                 :class="[feedFilter === department.id ? 'border-blue-600 ring-2 ring-blue-600' : 'border-slate-200 hover:border-slate-300', highlightedDepartments[department.id] ? 'bg-blue-50' : '', department.isQuiet && feedFilter !== department.id ? 'opacity-60' : '']">
                             <header class="flex items-start justify-between gap-2">
                                 <h4 class="text-base font-semibold leading-snug text-slate-900"><span x-show="department.icon" x-text="department.icon + ' '"></span><span x-text="department.name"></span></h4>
                                 <span x-show="department.overdue" class="shrink-0 rounded-full bg-red-50 px-2.5 py-0.5 text-sm font-semibold text-red-700">⚠ เลยกำหนด <span x-text="department.overdue"></span></span>
@@ -171,11 +172,6 @@
                     </template>
                 </div>
 
-                {{-- nothing in the period and nothing held: one line, not a card of zeros --}}
-                <p x-show="viewMode === 'cards' && quietDepartments().length" x-cloak class="mt-3 rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500">
-                    <span class="font-medium text-slate-600">ไม่มีงานเข้า งานเสร็จ หรืองานค้าง:</span>
-                    <span x-text="quietDepartments().map((department) => (department.icon ? department.icon + ' ' : '') + department.name).join(' · ')"></span>
-                </p>
 
                 <div x-show="viewMode === 'table'" x-cloak class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
                     <table class="w-full min-w-[640px] text-left text-sm tabular-nums">
@@ -402,12 +398,6 @@
             periodWord() {
                 if (this.summary.range.isToday) return 'วันนี้';
                 return this.summary.range.dayCount === 1 ? 'วันนั้น' : 'ช่วงนี้';
-            },
-            activeDepartments() {
-                return this.summary.departments.filter((department) => !department.isQuiet);
-            },
-            quietDepartments() {
-                return this.summary.departments.filter((department) => department.isQuiet);
             },
             filteredFeed() {
                 if (this.feedFilter === this.NEW_CABINET) return this.summary.feed.filter((event) => event.type === this.NEW_CABINET);
