@@ -33,6 +33,10 @@ Route::middleware(['auth', 'project.visible'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('perm:page.dashboard')->name('dashboard');
     Route::get('reports/production', [\App\Http\Controllers\ProductionReportController::class, 'index'])->middleware('perm:page.dashboard')->name('reports.production');   // รายงานการผลิต
     Route::get('reports/ceo', [DashboardController::class, 'report'])->middleware('perm:page.dashboard')->name('reports.ceo');
+    Route::middleware('perm:page.today')->group(function () {   // สรุปงาน: the page and the JSON it polls every few seconds
+        Route::get('reports/today', [\App\Http\Controllers\DailyWorkController::class, 'index'])->name('reports.today');
+        Route::get('reports/today/data', [\App\Http\Controllers\DailyWorkController::class, 'data'])->middleware('throttle:120,1')->name('reports.today.data');
+    });
 
     Route::get('projects/export', [ProjectController::class, 'export'])->middleware('perm:page.export')->name('projects.export');
     Route::middleware('perm:data.comments')->group(function () {   // the change log and comments
