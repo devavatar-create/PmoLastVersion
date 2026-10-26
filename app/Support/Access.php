@@ -34,6 +34,7 @@ final class Access
     /** key => [group, label, hint, default for a department] */
     public const PERMISSIONS = [
         'page.dashboard' => ['pages', 'แดชบอร์ด', '', true],
+        'page.today' => ['pages', 'สรุปงาน', 'งานเข้า / เสร็จของแต่ละแผนกวันนี้ (แสดงสด) — ถ้าไม่มีสิทธิ์ "จัดการโครงการและจ่ายงาน" เห็นเฉพาะแผนกตัวเอง', true],
         'page.projects' => ['pages', 'รายการโครงการ', 'เมนู "โครงการ" — หน้าโครงการแต่ละอันยังเปิดได้ตาม "เห็นโครงการไหน" (เช่น จาก Planning)', true],
         'page.cabinets' => ['pages', 'รายการใบสั่งผลิต / ตู้', 'เมนู "ตู้ไฟฟ้า"', true],
         'page.planning' => ['pages', 'Planning', 'หน้าทำงานหลักของแผนก', true],
