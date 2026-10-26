@@ -5,7 +5,7 @@
 --}}
 @props(['kind', 'owner', 'items', 'editable' => false, 'dateLabel' => null, 'linked' => [], 'receivers' => []])
 
-<div x-data="checklistEditor(@js(['kind' => $kind, 'url' => route('checklist-editor.apply', [$kind, $owner->id]), 'items' => $items, 'editable' => (bool) $editable, 'dateLabel' => $dateLabel, 'linked' => $linked, 'receivers' => $receivers]))"
+<div x-data="checklistEditor(@js(['kind' => $kind, 'ownerId' => $owner->id, 'url' => route('checklist-editor.apply', [$kind, $owner->id]), 'items' => $items, 'editable' => (bool) $editable, 'dateLabel' => $dateLabel, 'linked' => $linked, 'receivers' => $receivers]))"
      {{ $attributes->merge(['class' => 'text-sm']) }} @keydown.escape.stop="paste = null; dialog = null; cancelEdit()">
 
     {{-- several selected: one bar of actions --}}
@@ -57,9 +57,10 @@
             <input type="checkbox" :checked="allSelected" @change="toggleAll()" class="h-3.5 w-3.5 rounded border-slate-300" aria-label="เลือกทั้งหมด">
             <span x-text="items.length + ' รายการ' + (kind === 'subtask' ? ' · เสร็จ ' + doneCount : '')"></span>
             <span x-show="!linked.length" class="ml-auto hidden sm:inline">คลิกข้อความเพื่อแก้ · Enter บันทึก · ลาก ⋮⋮ หรือ Alt+↑↓ จัดลำดับ</span>
+            <span x-show="linkedIds.size" class="ml-auto hidden sm:inline">🔗 = รายการจากแผนกที่เทียบ (แก้ชื่อ / ลบ ที่ต้นทาง) · ติ๊กและหมายเหตุเป็นของแผนกนี้</span>
         </li>
         <template x-for="item in items" :key="item.id">
-            {{-- comparing: one row = this item | the other list's item of the same name (side by side on a wide screen, under it on a phone) --}}
+            {{-- comparing: one row = this item | the other list's item it is a copy of, or of the same name (side by side on a wide screen, under it on a phone) --}}
             <li class="group" :class="[linked.length ? 'lg:grid lg:grid-cols-2' : '', dragId === item.id ? 'opacity-40' : '', isSelected(item.id) ? 'bg-blue-50/60' : '']"
                 tabindex="-1" @keydown.alt.arrow-up.prevent="nudge(item, -1)" @keydown.alt.arrow-down.prevent="nudge(item, 1)"
                 @dragover.prevent @drop.prevent="drop(item)">
@@ -78,7 +79,8 @@
                                @keydown.enter.prevent="commitEdit('down')" @keydown.tab.prevent="commitEdit('right')" @blur="commitEdit()">
                     </template>
                     <span x-show="!(editing && editing.id === item.id && editing.field === 'name')" @click="startEdit(item, 'name')"
-                          class="block break-words text-sm leading-snug" :class="[item.done ? 'text-slate-400 line-through' : 'text-slate-800', editable ? 'cursor-text hover:bg-slate-50 rounded' : '']" x-text="item.name"></span>
+                          class="block break-words text-sm leading-snug" :class="[item.done ? 'text-slate-400 line-through' : 'text-slate-800', editable && !item.from ? 'cursor-text hover:bg-slate-50 rounded' : '']"
+                          :title="item.from ? 'รายการจาก ' + fromOf(item) + ' — แก้ชื่อ / ลบ ได้ที่ต้นทาง' : ''"><span x-show="item.from" class="mr-1 text-xs text-blue-500" aria-label="รายการจากแผนกที่เทียบ">🔗</span><span x-text="item.name"></span></span>
                     {{-- remark / date --}}
                     <div x-show="item.remark || dateLabel || (item.handoff && item.handoff.length) || (editing && editing.id === item.id && editing.field === 'remark')"
                          class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500">
@@ -105,7 +107,7 @@
                     <button type="button" x-show="!item.remark" @click="startEdit(item, 'remark')" class="px-1 text-slate-400 hover:text-blue-600" title="เพิ่มหมายเหตุ" aria-label="เพิ่มหมายเหตุ">📝</button>
                     <button type="button" @click="nudge(item, -1)" class="px-1 text-slate-400 hover:text-slate-800" title="ขึ้น (Alt+↑)" aria-label="ย้ายขึ้น">↑</button>
                     <button type="button" @click="nudge(item, 1)" class="px-1 text-slate-400 hover:text-slate-800" title="ลง (Alt+↓)" aria-label="ย้ายลง">↓</button>
-                    <button type="button" @click="remove([item.id])" class="rounded px-1 text-red-500 hover:bg-red-50" title="ลบ" aria-label="ลบรายการ">✕</button>
+                    <button type="button" x-show="!item.from" @click="remove([item.id])" class="rounded px-1 text-red-500 hover:bg-red-50" title="ลบ" aria-label="ลบรายการ">✕</button>
                 </span>
               </div>
               <template x-if="linked.length">

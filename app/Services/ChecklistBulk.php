@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  */
 class ChecklistBulk
 {
-    public function __construct(private ProgressService $progress) {}
+    public function __construct(private ProgressService $progress, private SharedChecklist $shared) {}
 
     /** What the dialog offers: the project's Sub Task names (how many cabinets have each) and, per Sub Task, its item names. */
     public function options(Project $project): array
@@ -56,7 +56,7 @@ class ChecklistBulk
 
         if (! $preview && $plan['apply']->isNotEmpty()) {
             DB::transaction(fn () => Model::withoutEvents(fn () => $plan['apply']->each(fn (\Closure $f) => $f())));
-            $plan['touched']->unique()->each(fn ($id) => $this->progress->recalculateSubtask(CabinetSubtask::find($id)));
+            $plan['touched']->merge($this->shared->takeTouched())->unique()->each(fn ($id) => $this->progress->recalculateSubtask(CabinetSubtask::find($id)));
             ActivityLog::record($project->id, $user->id, $project, 'checklist_edited', $plan['log'].' ('.$plan['changes'].' รายการ ใน '.$plan['cabinets'].' ตู้)');
             PlanningBoard::touch();
         }
@@ -115,9 +115,8 @@ class ChecklistBulk
             $plan['rows'][] = ['mo' => $s->cabinetTask->cabinet->mo_no, 'change' => '+ '.implode(', ', $new)];
             $seq = (int) $s->checklists->max('sequence');
             $plan['apply'][] = function () use ($s, $new, $seq) {
-                foreach ($new as $i => $n) {
-                    CabinetChecklist::forceCreate(['cabinet_subtask_id' => $s->id, 'name' => $n, 'is_completed' => false, 'sequence' => $seq + $i + 1]);
-                }
+                $made = collect($new)->map(fn ($n, $i) => CabinetChecklist::forceCreate(['cabinet_subtask_id' => $s->id, 'name' => $n, 'is_completed' => false, 'sequence' => $seq + $i + 1]));
+                $this->shared->added($s, $made);   // the Sub Tasks comparing with this one get them too
             };
         }
 
@@ -141,10 +140,19 @@ class ChecklistBulk
                 if ($newName === null || $newName === $c->name || $newName === '') {
                     continue;
                 }
+                if ($c->source_checklist_id) {   // a copy: its name follows its source
+                    $plan['skipped']++;
+                    $plan['rows'][] = ['mo' => $s->cabinetTask->cabinet->mo_no, 'change' => 'ข้าม "'.$c->name.'" — รายการจากแผนกที่เทียบ แก้ที่ต้นทาง'];
+
+                    continue;
+                }
                 $plan['changes']++;
                 $plan['cabinetIds'][] = $s->cabinetTask->cabinet_id;
                 $plan['rows'][] = ['mo' => $s->cabinetTask->cabinet->mo_no, 'change' => $c->name.' → '.$newName];
-                $plan['apply'][] = fn () => $c->forceFill(['name' => mb_substr($newName, 0, 255)])->save();
+                $plan['apply'][] = function () use ($c, $newName) {
+                    $c->forceFill(['name' => mb_substr($newName, 0, 255)])->save();
+                    $this->shared->renamed($c);
+                };
             }
         }
 
@@ -158,6 +166,7 @@ class ChecklistBulk
             throw new PlanningRejected('เลือกรายการที่จะลบ');
         }
         $plan = $this->emptyPlan('ลบ '.count($names).' ชื่อรายการ');
+        $copiesTicked = CabinetChecklist::whereIn('source_checklist_id', $subs->flatMap->checklists->pluck('id'))->where('is_completed', true)->pluck('source_checklist_id')->flip();
         foreach ($subs as $s) {
             foreach ($s->checklists->filter(fn ($c) => in_array(self::norm($c->name), $names, true)) as $c) {
                 if ($c->is_completed) {
@@ -166,11 +175,20 @@ class ChecklistBulk
 
                     continue;
                 }
+                if ($c->source_checklist_id || isset($copiesTicked[$c->id])) {
+                    $plan['skipped']++;
+                    $plan['rows'][] = ['mo' => $s->cabinetTask->cabinet->mo_no, 'change' => 'เก็บไว้ — "'.$c->name.'" '.($c->source_checklist_id ? 'เป็นรายการจากแผนกที่เทียบ ลบที่ต้นทาง' : 'แผนกที่เทียบติ๊กแล้ว')];
+
+                    continue;
+                }
                 $plan['changes']++;
                 $plan['cabinetIds'][] = $s->cabinetTask->cabinet_id;
                 $plan['touched'][] = $s->id;
                 $plan['rows'][] = ['mo' => $s->cabinetTask->cabinet->mo_no, 'change' => '− '.$c->name];
-                $plan['apply'][] = fn () => $c->delete();   // soft: restorable
+                $plan['apply'][] = function () use ($c) {
+                    $c->delete();   // soft: restorable
+                    $this->shared->deleted(collect([$c]));
+                };
             }
         }
 

@@ -252,13 +252,14 @@ class PlanningSync
         }
         ProjectLock::assertOpen($project->id);
 
-        $subtask->checklists()->create([
+        $item = $subtask->checklists()->create([
             'checklist_template_id' => null,
             'name' => mb_substr($text, 0, 255),
             'is_completed' => false,
             'sequence' => (int) $subtask->checklists()->max('sequence') + 1,
         ]);
         $this->progress->recalculateSubtask($subtask);
+        $this->shareChanged(fn (SharedChecklist $shared) => $shared->added($subtask, collect([$item])));
 
         return null;
     }
@@ -277,11 +278,25 @@ class PlanningSync
             throw new PlanningRejected('ลบ Checklist ได้เฉพาะแผนกที่รับงานแล้ว — ต้อง "รับงาน" ก่อน');
         }
         ProjectLock::assertOpen($project->id);
+        $shared = app(SharedChecklist::class);
+        $shared->guardOwn([$item]);
+        $shared->assertDeletable(collect([$item]));
 
         $item->delete();
         $this->progress->recalculateSubtask($subtask);
+        $this->shareChanged(fn (SharedChecklist $shared) => $shared->deleted(collect([$item])), $shared);
 
         return null;
+    }
+
+    /** A change that reaches the Sub Tasks comparing with this one (SharedChecklist): their progress follows. */
+    private function shareChanged(\Closure $change, ?SharedChecklist $shared = null): void
+    {
+        $shared ??= app(SharedChecklist::class);
+        $change($shared);
+        foreach (CabinetSubtask::whereKey($shared->takeTouched())->get() as $s) {
+            $this->progress->recalculateSubtask($s);
+        }
     }
 
     /**

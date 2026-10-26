@@ -100,6 +100,7 @@ Route::middleware(['auth', 'project.visible'])->group(function () {
     Route::post('projects/{project}/cabinets', [CabinetController::class, 'store'])->middleware('pmo')->name('cabinets.store');
     Route::post('cabinets/{cabinet}/copy', [CabinetController::class, 'copy'])->middleware('pmo')->name('cabinets.copy');
     Route::get('cabinets/{cabinet}', [CabinetController::class, 'show'])->name('cabinets.show');
+    Route::get('cabinets/{cabinet}/checklists-live', [\App\Http\Controllers\ChecklistEditorController::class, 'live'])->name('cabinets.checklists-live');   // the cabinet page without reloads
     Route::get('cabinets/{cabinet}/edit', [CabinetController::class, 'edit'])->middleware('pmo')->name('cabinets.edit');
     Route::put('cabinets/{cabinet}', [CabinetController::class, 'update'])->middleware('pmo')->name('cabinets.update');
     Route::delete('cabinets/{cabinet}', [CabinetController::class, 'destroy'])->middleware('pmo')->name('cabinets.destroy');

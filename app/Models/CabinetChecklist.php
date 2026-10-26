@@ -50,6 +50,18 @@ class CabinetChecklist extends Model
         return $this->belongsTo(User::class, 'completed_by');
     }
 
+    /** The item of the Sub Task this one compares with that this item was made from (App\Services\SharedChecklist). */
+    public function sourceItem()
+    {
+        return $this->belongsTo(self::class, 'source_checklist_id');
+    }
+
+    /** The items made from this one in the Sub Tasks comparing with its own. */
+    public function copies()
+    {
+        return $this->hasMany(self::class, 'source_checklist_id');
+    }
+
     protected function activityProjectId(): ?int
     {
         return $this->subtask?->cabinetTask?->cabinet?->project_id;

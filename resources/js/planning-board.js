@@ -1091,13 +1091,19 @@ export default function registerPlanningBoard() {
                 c.checklist.filter((i) => i.deptId === deptId).forEach((i) => { i.expected = v; });
                 this.send([{ type: 'checklist_date_all', taskId: this.cl.taskId, cabinetId: c.id, deptId, date: v }]);
             },
-            // template pairs: the lists a Sub Task of mine compares with, and their items matched to mine by name
+            // pairs: the lists a Sub Task of mine compares with; one list - a copy of mine (i.from) beside the item it was made
+            // from, an own item of the same name beside that one
             clLinkedOf(subId) { return ((this.clCab && this.clCab.linked) || []).filter((l) => l.forId === subId); },
             clNorm(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); },
-            clMatches(subId, item) { const n = this.clNorm(item.text); return this.clLinkedOf(subId).flatMap((l) => l.items.filter((x) => this.clNorm(x.text) === n).map((x) => ({ ...x, l }))); },
+            clTaken(subId) { return new Set(((this.clCab && this.clCab.checklist) || []).filter((i) => i.subId === subId && i.from).map((i) => i.from)); },
+            clMatches(subId, item) {
+                if (item.from) return this.clLinkedOf(subId).flatMap((l) => l.items.filter((x) => x.id === item.from).map((x) => ({ ...x, l })));
+                const n = this.clNorm(item.text), taken = this.clTaken(subId);
+                return this.clLinkedOf(subId).flatMap((l) => l.items.filter((x) => !taken.has(x.id) && this.clNorm(x.text) === n).map((x) => ({ ...x, l })));
+            },
             clUnmatched(w) {
-                const mine = new Set(w.items.map((i) => this.clNorm(i.text)));
-                return this.clLinkedOf(w.id).flatMap((l) => l.items.filter((x) => !mine.has(this.clNorm(x.text))).map((x) => ({ ...x, l })));
+                const taken = this.clTaken(w.id), mine = new Set(w.items.filter((i) => !i.from).map((i) => this.clNorm(i.text)));
+                return this.clLinkedOf(w.id).flatMap((l) => l.items.filter((x) => !taken.has(x.id) && !mine.has(this.clNorm(x.text))).map((x) => ({ ...x, l })));
             },
             linkedLate(i) { return !!i.expected && !i.received && i.expected < this.today; },
             stateWord(state) { return { ASSIGNED: 'รอรับ', ACCEPTED: 'รับแล้ว', IN_PROGRESS: 'กำลังทำ', COMPLETED: 'เสร็จ' }[state] || ''; },

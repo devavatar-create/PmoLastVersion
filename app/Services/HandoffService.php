@@ -58,7 +58,8 @@ class HandoffService
     }
 
     /**
-     * Has the receiving side dealt with this item: the receiver ticked an item of the same name, or ticked everything it has.
+     * Has the receiving side dealt with this item: the receiver ticked its copy of it (SharedChecklist), else an item of the
+     * same name, else everything it has.
      *
      * @param  Collection<int, CabinetChecklist>  $receiverItems  the receiving Sub Task's items
      */
@@ -66,6 +67,10 @@ class HandoffService
     {
         if ($receiverItems->isEmpty()) {
             return false;
+        }
+        $copies = $receiverItems->where('source_checklist_id', $item->id);
+        if ($copies->isNotEmpty()) {
+            return $copies->contains('is_completed', true);
         }
         $same = $receiverItems->filter(fn ($r) => self::norm($r->name) === self::norm($item->name));
 

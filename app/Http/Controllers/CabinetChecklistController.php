@@ -7,12 +7,21 @@ use App\Models\CabinetChecklist;
 use App\Models\CabinetSubtask;
 use App\Services\AutomationService;
 use App\Services\ProgressService;
+use App\Services\SharedChecklist;
 use App\Services\SubtaskAssignmentService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 
 class CabinetChecklistController extends Controller
 {
+    /** New items reach the Sub Tasks comparing with this one (SharedChecklist), whose progress follows. */
+    private function share(\Illuminate\Support\Collection $made, CabinetSubtask $subtask, ProgressService $progress): void
+    {
+        $shared = app(SharedChecklist::class);
+        $shared->added($subtask, $made);
+        CabinetSubtask::whereKey($shared->takeTouched())->get()->each(fn ($s) => $progress->recalculateSubtask($s));
+    }
+
     /**
      * Add one or more checklist items directly to a cabinet's sub task,
      * independent of whatever template it was created from.
@@ -36,8 +45,8 @@ class CabinetChecklistController extends Controller
 
         $sequence = $cabinetSubtask->checklists()->max('sequence') + 1;
 
-        $names->each(function (string $name) use ($cabinetSubtask, &$sequence) {
-            $cabinetSubtask->checklists()->create([
+        $made = $names->map(function (string $name) use ($cabinetSubtask, &$sequence) {
+            return $cabinetSubtask->checklists()->create([
                 'checklist_template_id' => null,
                 'name' => $name,
                 'is_completed' => false,
@@ -46,6 +55,7 @@ class CabinetChecklistController extends Controller
         });
 
         $progressService->recalculateSubtask($cabinetSubtask);
+        $this->share($made, $cabinetSubtask, $progressService);
 
         return back()->with('success', "เพิ่ม Checklist {$names->count()} รายการเรียบร้อยแล้ว");
     }
@@ -83,9 +93,10 @@ class CabinetChecklistController extends Controller
 
         // Suppressed: one entry per copied checklist row would spam the
         // timeline - a single consolidated entry replaces it below.
-        Model::withoutEvents(function () use ($source, $target, &$sequence) {
+        $made = collect();
+        Model::withoutEvents(function () use ($source, $target, &$sequence, $made) {
             foreach ($source->checklists as $checklist) {
-                $target->checklists()->create([
+                $made[] = $target->checklists()->create([
                     'checklist_template_id' => $checklist->checklist_template_id,
                     'name' => $checklist->name,
                     'description' => $checklist->description,
@@ -96,6 +107,7 @@ class CabinetChecklistController extends Controller
         });
 
         $progressService->recalculateSubtask($target);
+        $this->share($made, $target, $progressService);
 
         ActivityLog::record(
             $target->cabinetTask->cabinet->project_id,

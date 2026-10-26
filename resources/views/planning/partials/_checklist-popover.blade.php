@@ -59,15 +59,16 @@
                               <div>
                                 <label class="group relative flex cursor-pointer items-start gap-2 px-1.5 py-1 hover:bg-slate-50">
                                     <input type="checkbox" :checked="i.done" @change="tick(clTask, clCab, i)" class="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-emerald-600">
-                                    <span class="min-w-0 flex-1 break-words text-[13px] leading-snug" :class="i.done ? 'line-through text-slate-400' : 'text-slate-800'" x-text="i.text" :title="i.text + (i.remark ? ' — ' + i.remark : '')"></span>
+                                    <span class="min-w-0 flex-1 break-words text-[13px] leading-snug" :class="i.done ? 'line-through text-slate-400' : 'text-slate-800'"
+                                          :title="i.text + (i.remark ? ' — ' + i.remark : '') + (i.from ? ' · รายการจากแผนกที่เทียบ (แก้ชื่อ / ลบ ที่ต้นทาง)' : '')"><span x-show="i.from" class="mr-0.5 text-[11px] text-blue-500">🔗</span><span x-text="i.text"></span></span>
                                     <span x-show="i.remark" class="shrink-0 text-[11px]" :title="i.remark">📝</span>
                                     <span x-show="deptOf(i.deptId).dateLabel && !canEditStage(i.deptId) && i.expected" class="shrink-0 rounded bg-amber-50 px-1 text-[10.5px] text-amber-800" :title="deptOf(i.deptId).dateLabel" x-text="'📦 ' + fmtBE(i.expected)"></span>
                                     <span class="flex shrink-0 [@media(hover:hover)]:absolute [@media(hover:hover)]:right-0.5 [@media(hover:hover)]:top-0.5 [@media(hover:hover)]:rounded [@media(hover:hover)]:bg-white [@media(hover:hover)]:shadow-sm [@media(hover:hover)]:ring-1 [@media(hover:hover)]:ring-slate-200 items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
                                         <button type="button" @click.prevent="clMove(i, 'up')" class="px-0.5 text-[12px] text-slate-400 hover:text-slate-800" title="ขึ้น" aria-label="ย้ายขึ้น">↑</button>
                                         <button type="button" @click.prevent="clMove(i, 'down')" class="px-0.5 text-[12px] text-slate-400 hover:text-slate-800" title="ลง" aria-label="ย้ายลง">↓</button>
-                                        <button type="button" @click.prevent="clRename(i)" class="px-0.5 text-[12px] text-slate-400 hover:text-blue-600" title="แก้ชื่อ" aria-label="แก้ชื่อรายการ">✎</button>
+                                        <button type="button" x-show="!i.from" @click.prevent="clRename(i)" class="px-0.5 text-[12px] text-slate-400 hover:text-blue-600" title="แก้ชื่อ" aria-label="แก้ชื่อรายการ">✎</button>
                                         <button type="button" @click.prevent="clRemark(i)" class="px-0.5 text-[12px] text-slate-400 hover:text-blue-600" title="หมายเหตุ" aria-label="หมายเหตุ">📝</button>
-                                        <button type="button" @click.prevent="clDelete(i)" class="rounded px-1 text-[13px] leading-none text-red-600 hover:bg-red-50" title="ลบ" aria-label="ลบรายการ">✕</button>
+                                        <button type="button" x-show="!i.from" @click.prevent="clDelete(i)" class="rounded px-1 text-[13px] leading-none text-red-600 hover:bg-red-50" title="ลบ" aria-label="ลบรายการ">✕</button>
                                     </span>
                                 </label>
                                 <p x-show="i.remark" class="-mt-0.5 whitespace-pre-line break-words pb-1 pl-8 pr-1.5 text-[11px] text-slate-500" x-text="'📝 ' + i.remark"></p>
@@ -80,7 +81,7 @@
                                     </div>
                                 </template>
                               </div>
-                              {{-- the other list's item of the same name: beside it when there is room, under it otherwise --}}
+                              {{-- the other list's item it is a copy of (or of the same name): beside it when there is room, under it otherwise --}}
                               <div x-show="clLinkedOf(w.id).length" class="border-dashed border-slate-200 bg-slate-50/70 py-1 pr-1.5 text-[13px]" :class="clSide() ? 'border-l pl-1.5' : 'pl-8'">
                                 <template x-for="m in clMatches(w.id, i)" :key="m.l.id + m.id">
                                     <div class="flex items-start gap-2">

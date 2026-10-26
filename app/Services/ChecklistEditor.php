@@ -30,6 +30,9 @@ class ChecklistEditor
 {
     public const MAX_ITEMS = 300;
 
+    /** The list a pair shares (SharedChecklist): set per operation, cabinet lists only. */
+    private ?SharedChecklist $shared = null;
+
     public function __construct(private ProgressService $progress) {}
 
     // ======================================================================= reading
@@ -78,6 +81,7 @@ class ChecklistEditor
                 'id' => $c->id, 'name' => $c->name, 'remark' => (string) $c->remark, 'date' => $c->expected_date?->format('Y-m-d'),
                 'done' => (bool) $c->is_completed, 'doneBy' => $c->completedBy?->name, 'doneAt' => $c->completed_at?->thaiDateTime(),
                 'toggleUrl' => route('checklists.toggle', $c), 'handoff' => $receipts[$c->id] ?? [],
+                'from' => $c->source_checklist_id ? 'k'.$c->source_checklist_id : null,   // a copy of the item of the Sub Task it compares with
             ])->all();
     }
 
@@ -147,6 +151,7 @@ class ChecklistEditor
     public function apply(string $kind, Model $owner, User $user, array $op): array
     {
         $this->authorize($kind, $owner, $user);
+        $this->shared = $kind === 'subtask' ? app(SharedChecklist::class) : null;
 
         $result = DB::transaction(fn () => Model::withoutEvents(fn () => match ($op['type'] ?? null) {
             'add' => $this->add($kind, $owner, $op['items'] ?? []),
@@ -160,7 +165,7 @@ class ChecklistEditor
             default => throw new PlanningRejected('ไม่รู้จักคำสั่งนี้'),
         }));
 
-        $touched = array_unique(array_merge([$owner->id], $result['others'] ?? []));
+        $touched = array_unique(array_merge([$owner->id], $result['others'] ?? [], $this->shared?->takeTouched() ?? []));
         if ($kind === 'subtask') {
             foreach (CabinetSubtask::whereKey($touched)->get() as $s) {
                 $this->progress->recalculateSubtask($s);
@@ -195,6 +200,7 @@ class ChecklistEditor
 
         $seq = (int) $this->query($kind, $owner)->max('sequence');
         $created = $rows->map(fn ($r) => $this->create($kind, $owner, $r, ++$seq));
+        $this->shared?->added($owner, $created);
 
         return ['message' => 'เพิ่ม '.$created->count().' รายการ', 'log' => 'เพิ่ม Checklist '.$created->count().' รายการใน "'.$owner->name.'"',
             'undo' => ['type' => 'delete', 'ids' => $created->pluck('id')->all()]];
@@ -211,6 +217,9 @@ class ChecklistEditor
                 throw new PlanningRejected('ชื่อรายการต้องไม่ว่าง');
             }
             $changes['name'] = $name;
+            if ($name !== $item->name) {
+                $this->shared?->guardOwn([$item]);
+            }
         }
         if (array_key_exists('remark', $op)) {
             $changes[$kind === 'template' ? 'description' : 'remark'] = mb_substr(trim((string) $op['remark']), 0, 1000) ?: null;
@@ -223,6 +232,9 @@ class ChecklistEditor
             }
         }
         $item->forceFill($changes)->save();
+        if (isset($changes['name'])) {
+            $this->shared?->renamed($item);
+        }
 
         return ['undo' => ['type' => 'update', 'id' => $item->id] + $before,
             'log' => isset($changes['name']) && $changes['name'] !== $before['name'] ? "แก้ชื่อ Checklist \"{$before['name']}\" → \"{$changes['name']}\"" : null];
@@ -234,10 +246,15 @@ class ChecklistEditor
         if ($items->isEmpty()) {
             throw new PlanningRejected('ไม่พบรายการที่จะลบ');
         }
+        if ($this->shared) {
+            $this->shared->guardOwn($items);
+            $this->shared->assertDeletable($items);
+        }
         $undo = $kind === 'template'
             ? ['type' => 'restore', 'items' => $items->map(fn ($c) => ['name' => $c->name, 'remark' => (string) $c->description, 'sequence' => $c->sequence])->values()->all()]
             : ['type' => 'restore', 'ids' => $items->pluck('id')->all()];
         $items->each->delete();   // a cabinet's items: soft (restorable); a template's: gone (undo re-creates them)
+        $this->shared?->deleted($items);   // their copies in the Sub Tasks comparing with this one go too
 
         return ['message' => 'ลบ '.$items->count().' รายการ', 'undo' => $undo,
             'log' => 'ลบ Checklist '.$items->count().' รายการจาก "'.$owner->name.'": '.$items->pluck('name')->take(5)->implode(', ').($items->count() > 5 ? ' …' : '')];
@@ -251,7 +268,9 @@ class ChecklistEditor
                 'description' => ($r['remark'] ?? '') ?: null, 'sequence' => (int) ($r['sequence'] ?? 0)]));
             $n = $rows->count();
         } else {
-            $n = CabinetChecklist::onlyTrashed()->where('cabinet_subtask_id', $owner->id)->whereKey($this->ids($op['ids'] ?? []))->restore();
+            $trashed = CabinetChecklist::onlyTrashed()->where('cabinet_subtask_id', $owner->id)->whereKey($this->ids($op['ids'] ?? []))->get();
+            $n = CabinetChecklist::onlyTrashed()->whereKey($trashed->pluck('id'))->restore();
+            $this->shared?->restored($trashed);
         }
 
         return ['message' => "นำกลับมา {$n} รายการ", 'log' => "นำ Checklist ที่ลบกลับมา {$n} รายการใน \"{$owner->name}\""];
@@ -269,6 +288,7 @@ class ChecklistEditor
         foreach ($order as $i => $id) {
             $this->query($kind, $owner)->whereKey($id)->update(['sequence' => $i + 1]);
         }
+        $this->shared?->reordered($owner);
 
         return [];
     }
@@ -281,9 +301,11 @@ class ChecklistEditor
         }
         $this->authorize($kind, $target, $user);
         $items = $this->query($kind, $owner)->whereKey($this->ids($ids))->orderBy('sequence')->get();
+        $this->shared?->assertMovable($items);
         $seq = (int) $this->query($kind, $target)->max('sequence');
         $fk = $kind === 'template' ? 'cabinet_subtask_template_id' : 'cabinet_subtask_id';
         $items->each(fn ($c) => $c->forceFill([$fk => $target->id, 'sequence' => ++$seq])->save());
+        $this->shared?->added($target, $items);
 
         return ['message' => 'ย้าย '.$items->count().' รายการไป "'.$target->name.'"', 'others' => [$target->id],
             'log' => 'ย้าย Checklist '.$items->count().' รายการจาก "'.$owner->name.'" ไป "'.$target->name.'"'];
@@ -303,15 +325,17 @@ class ChecklistEditor
             $this->authorize($kind, $target, $user);
             $have = $this->query($kind, $target)->pluck('name')->map(fn ($n) => mb_strtolower(trim($n)))->all();
             $seq = (int) $this->query($kind, $target)->max('sequence');
+            $made = collect();
             foreach ($items as $c) {
                 if (in_array(mb_strtolower(trim($c->name)), $have, true)) {
                     $skipped++;
 
                     continue;   // already there
                 }
-                $this->create($kind, $target, ['name' => $c->name, 'remark' => $kind === 'template' ? (string) $c->description : '', 'date' => null], ++$seq);
+                $made->push($this->create($kind, $target, ['name' => $c->name, 'remark' => $kind === 'template' ? (string) $c->description : '', 'date' => null], ++$seq));
                 $added++;
             }
+            $this->shared?->added($target, $made);
             if ($kind === 'subtask') {
                 ActivityLog::record($target->cabinetTask->cabinet->project_id, $user->id, $target, 'checklist_edited', "คัดลอก Checklist {$items->count()} รายการมาจาก \"{$owner->name}\" ({$owner->cabinetTask->cabinet->mo_no})");
             }
@@ -332,6 +356,7 @@ class ChecklistEditor
         $new = $this->query($kind, $source)->orderBy('sequence')->orderBy('id')->get()
             ->reject(fn ($c) => in_array(mb_strtolower(trim($c->name)), $have, true))
             ->map(fn ($c) => $this->create($kind, $owner, ['name' => $c->name, 'remark' => $kind === 'template' ? (string) $c->description : '', 'date' => null], ++$seq));
+        $this->shared?->added($owner, $new);
 
         return ['message' => "เพิ่ม {$new->count()} รายการจาก \"{$source->name}\"", 'undo' => ['type' => 'delete', 'ids' => $new->pluck('id')->all()],
             'log' => "คัดลอก Checklist {$new->count()} รายการจาก \"{$source->name}\" มาที่ \"{$owner->name}\""];
@@ -394,6 +419,43 @@ class ChecklistEditor
     private function ids(array $ids): array
     {
         return collect($ids)->map(fn ($id) => (int) $id)->filter()->unique()->values()->take(self::MAX_ITEMS)->all();
+    }
+
+    // ======================================================================= the cabinet page, kept current without a reload
+
+    /** A stamp of every list of the cabinet: it moves with any add, edit, tick, order or delete (the page asks every 15 s). */
+    public function cabinetVersion(\App\Models\Cabinet $cabinet): string
+    {
+        $row = DB::table('cabinet_checklists as c')->join('cabinet_subtasks as s', 's.id', '=', 'c.cabinet_subtask_id')
+            ->join('cabinet_tasks as t', 't.id', '=', 's.cabinet_task_id')->where('t.cabinet_id', $cabinet->id)
+            ->selectRaw('count(*) as n, count(c.deleted_at) as gone, max(c.updated_at) as at, sum(case when c.is_completed = 1 then 1 else 0 end) as done, sum(c.sequence) as seq, sum(length(c.name)) + sum(length(coalesce(c.remark, \'\'))) as len')
+            ->first();
+
+        return substr(md5(json_encode($row)), 0, 12);
+    }
+
+    /**
+     * Every Sub Task's list of the cabinet as the page shows it (its items and the lists it compares with), and the bars
+     * (the same shape as an edit's answer, one per Sub Task).
+     */
+    public function cabinetLists(\App\Models\Cabinet $cabinet): array
+    {
+        $cabinet->load('tasks.subtasks.checklists.completedBy:id,name');
+        $handoff = app(HandoffService::class);
+        $lists = [];
+        $progress = [];
+        $row = fn ($m, array $c) => ['id' => $m->id, 'progress' => $m->progress, 'status' => $m->status, 'completed_checklists' => $c['completed'], 'total_checklists' => $c['total']];
+        foreach ($cabinet->tasks as $task) {
+            $task->setRelation('cabinet', $cabinet);
+            foreach ($task->subtasks as $s) {
+                $s->setRelation('cabinetTask', $task);
+                $lists[$s->id] = ['items' => $this->items('subtask', $s), 'linked' => $handoff->linkedForSubtask($s)];
+                $progress[] = ['subtask' => $row($s, ['completed' => $s->checklists->where('is_completed', true)->count(), 'total' => $s->checklists->count()]),
+                    'task' => $row($task, $task->checklist_counts), 'cabinet' => $row($cabinet, $cabinet->checklist_counts)];
+            }
+        }
+
+        return ['lists' => $lists, 'progress' => $progress];
     }
 
     /** The bars the cabinet page shows (same shape as the tick endpoint's answer). */

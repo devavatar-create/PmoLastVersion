@@ -70,6 +70,10 @@ class TemplateTools
                 }
             });
         });
+        // a Sub Task comparing with another: the items it just got become copies of that one's, and that one's new items reach it
+        $shared = app(SharedChecklist::class);
+        $shared->syncCabinets($plan->map(fn ($c) => $c['cabinet']->id)->values());
+        CabinetSubtask::whereKey($shared->takeTouched())->get()->each(fn ($s) => $this->progress->recalculateSubtask($s));
         foreach ($plan as $c) {
             $c['adds']->pluck('subtask')->unique('id')->each(fn ($s) => $this->progress->recalculateSubtask($s->fresh()));
             ActivityLog::record($c['cabinet']->project_id, $user->id, $c['cabinet'], 'checklist_edited',
