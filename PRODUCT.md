@@ -59,7 +59,7 @@ It is built around how Avatar Electric actually builds cabinets: every cabinet c
 - **Decided (2026-10):**
   - "Done" is one rule everywhere: the checklist is complete OR the department pressed "เสร็จงาน" (`CabinetSubtask::isDone()`).
   - A sub task is late from the day after its due date (`due_date < today`).
-  - The typeface is **Anuphan** in every screen, the Planning page and the printed reports (loaded from Bunny Fonts; `tailwind.config.js` `fontFamily.sans`).
+  - The typeface is **Anuphan** in every screen, the Planning page and the printed reports (served from `public/fonts/anuphan/`, so it works without the internet; `tailwind.config.js` `fontFamily.sans`).
 
 ## Brand Commitments
 

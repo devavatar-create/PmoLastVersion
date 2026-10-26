@@ -40,7 +40,8 @@ export default {
     theme: {
         extend: {
             fontFamily: {
-                sans: ['Anuphan', ...defaultTheme.fontFamily.sans],
+                // Anuphan from public/fonts/anuphan (no internet needed); Thai fallbacks if it ever fails to load
+                sans: ['Anuphan', 'Sarabun', 'Noto Sans Thai', 'Leelawadee UI', ...defaultTheme.fontFamily.sans],
             },
             colors: {
                 blue: electric,

@@ -23,3 +23,8 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# the self-hosted font (public/fonts): some servers don't know the type
+<IfModule mod_mime.c>
+    AddType font/woff2 .woff2
+</IfModule>
