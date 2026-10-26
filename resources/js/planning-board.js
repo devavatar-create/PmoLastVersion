@@ -158,7 +158,7 @@ export default function registerPlanningBoard() {
                 // pick up other people's changes every minute, but never while something is being sent or edited
                 // pick up other people's changes: every 15 s, and at once when the tab comes back into view (an unchanged board costs a 304)
                 const poll = () => { if (!this.saving && !document.hidden && !this.stageDept && !this.cl && !this.newProject) this.refresh(); };
-                val(poll, 15000);
+                setInterval(poll, 15000);
                 document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
                 window.addEventListener('resize', () => { if (this.cl && this.cl.anchor) this.clPlace(); });   // e.g. an iPad turned round
             },
