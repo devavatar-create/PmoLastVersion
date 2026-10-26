@@ -487,6 +487,7 @@ class PlanningBoard
                     'expected' => ($a['expected_date'] ?? '') !== '' ? substr((string) $a['expected_date'], 0, 10) : null,
                     'deptId' => $deptId,
                     'subId' => $subId,
+                    'from' => ($a['source_checklist_id'] ?? null) ? 'k'.$a['source_checklist_id'] : null,   // a copy of the item of the Sub Task it compares with
                 ]);
             })->values()->all(),
         ];

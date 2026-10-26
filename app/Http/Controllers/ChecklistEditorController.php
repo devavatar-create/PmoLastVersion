@@ -36,6 +36,19 @@ class ChecklistEditorController extends Controller
         }
     }
 
+    /**
+     * The cabinet page asks every 15 s (and right after a change) whether any list of the cabinet moved: only the stamp when
+     * nothing did, else every list again - so a list shared with another Sub Task (SharedChecklist) or ticked by someone
+     * else shows without a reload.
+     */
+    public function live(Request $request, \App\Models\Cabinet $cabinet)
+    {
+        $version = $this->editor->cabinetVersion($cabinet);
+
+        return response()->json(['version' => $version]
+            + ($request->query('v') === $version ? [] : $this->editor->cabinetLists($cabinet)));
+    }
+
     private function owner(string $kind, int $id)
     {
         abort_unless(in_array($kind, ['subtask', 'template'], true), 404);

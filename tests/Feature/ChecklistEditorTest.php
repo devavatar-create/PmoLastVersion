@@ -107,7 +107,7 @@ class ChecklistEditorTest extends TestCase
         $this->other->pairSources()->attach($this->sub->id);
         app(\App\Services\HandoffService::class)->forgetPairs();   // set straight in the table here, not through SubtaskPairs
         $this->op($this->user($this->busbar), ['type' => 'add', 'items' => [['name' => 'Breaker', 'date' => '20/10/2569'], ['name' => 'CT', 'date' => '2026-11-01']]])->assertOk();
-        $this->assertSame(['2026-10-20', '2026-11-01'], CabinetChecklist::whereIn('name', ['Breaker', 'CT'])->orderBy('sequence')->get()->map(fn ($c) => $c->expected_date->format('Y-m-d'))->all());
+        $this->assertSame(['2026-10-20', '2026-11-01'], CabinetChecklist::where('cabinet_subtask_id', $this->sub->id)->whereIn('name', ['Breaker', 'CT'])->orderBy('sequence')->get()->map(fn ($c) => $c->expected_date->format('Y-m-d'))->all());
         $this->op($this->user($this->busbar), ['type' => 'add', 'items' => [['name' => 'X', 'date' => '31/02/2569']]])->assertStatus(422);
     }
 

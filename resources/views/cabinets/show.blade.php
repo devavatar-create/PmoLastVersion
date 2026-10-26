@@ -366,6 +366,36 @@
     @push('scripts')
     @include('cabinets.partials._assignment-scripts')
     <script>
+        // every list kept current without a reload: asked every 15 s while the tab is shown, and right after a change here
+        // (a list shared with another Sub Task follows at once). Only a stamp comes back when nothing moved.
+        (() => {
+            const url = @js(route('cabinets.checklists-live', $cabinet));
+            let version = @js($checklistEditor->cabinetVersion($cabinet));
+            let asking = false, again = false;
+            async function check() {
+                if (document.hidden) return;
+                if (asking) { again = true; return; }
+                asking = true;
+                try {
+                    const res = await fetch(url + '?v=' + encodeURIComponent(version), { headers: { 'Accept': 'application/json' } });
+                    if (!res.ok) return;
+                    const d = await res.json();
+                    const moved = d.version !== version && d.lists;
+                    version = d.version;
+                    if (!moved) return;
+                    window.dispatchEvent(new CustomEvent('checklists-live', { detail: d }));
+                    (d.progress || []).forEach((p) => window.dispatchEvent(new CustomEvent('checklist-progress', { detail: p })));
+                } catch (e) { /* offline for a moment: the next round tries again */ }
+                finally {
+                    asking = false;
+                    if (again) { again = false; check(); }
+                }
+            }
+            setInterval(check, 15000);
+            document.addEventListener('visibilitychange', check);
+            window.addEventListener('checklist-changed', () => setTimeout(check, 200));
+        })();
+
         // the checklist editor (x-checklist-editor) reports every change: the Sub Task / Task / cabinet bars follow
         window.addEventListener('checklist-progress', (e) => {
             const d = e.detail;

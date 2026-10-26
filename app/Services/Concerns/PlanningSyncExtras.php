@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\CabinetCopyService;
 use App\Services\HandoffService;
 use App\Services\ProjectLock;
+use App\Services\SharedChecklist;
 use App\Services\WorkScope;
 use Illuminate\Support\Facades\DB;
 
@@ -377,7 +378,11 @@ trait PlanningSyncExtras
         if ($name === '' || mb_strlen($name) > 255) {
             throw new PlanningRejected('กรุณาพิมพ์ชื่อรายการ checklist');
         }
+        if ($name !== $item->name) {
+            app(SharedChecklist::class)->guardOwn([$item]);
+        }
         $item->update(['name' => $name]);
+        app(SharedChecklist::class)->renamed($item);
 
         return null;
     }
@@ -441,6 +446,7 @@ trait PlanningSyncExtras
         if (isset($list[$j])) {
             [$list[$i], $list[$j]] = [$list[$j], $list[$i]];
             $list->each(fn ($c, $n) => $c->sequence === $n + 1 ?: $c->forceFill(['sequence' => $n + 1])->saveQuietly());
+            app(SharedChecklist::class)->reordered($item->subtask);
         }
 
         return null;

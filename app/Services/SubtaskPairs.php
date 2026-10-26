@@ -47,6 +47,7 @@ class SubtaskPairs
         $before = $sub->pairSources()->pluck('cabinet_subtasks.id')->sort()->values();
         $sub->pairSources()->sync($valid->pluck('id')->all());
         app(HandoffService::class)->forgetPairs();
+        $this->share(fn (SharedChecklist $shared) => $shared->syncReceivers([$sub->id]));
 
         if ($before->all() !== $valid->pluck('id')->sort()->values()->all()) {
             \App\Models\ActivityLog::record($cabinet->project_id, $actor?->id, $sub, 'updated', $valid->isEmpty()
@@ -66,6 +67,7 @@ class SubtaskPairs
             ->map(fn ($p) => $this->row($made[$p->cabinet_subtask_template_id], $made[$p->source_subtask_template_id]));
         DB::table('cabinet_subtask_pairs')->insertOrIgnore($rows->values()->all());
         app(HandoffService::class)->forgetPairs();
+        $this->share(fn (SharedChecklist $shared) => $shared->syncReceivers($rows->pluck('cabinet_subtask_id')));
     }
 
     /** A cabinet copied from another: the copy keeps its pairs. @param array<int, int> $made old sub task id => new one */
@@ -79,6 +81,7 @@ class SubtaskPairs
             ->map(fn ($p) => $this->row($made[$p->cabinet_subtask_id], $made[$p->source_subtask_id]));
         DB::table('cabinet_subtask_pairs')->insertOrIgnore($rows->values()->all());
         app(HandoffService::class)->forgetPairs();
+        $this->share(fn (SharedChecklist $shared) => $shared->syncReceivers($rows->pluck('cabinet_subtask_id')));
     }
 
     /** A template duplicated: the copy keeps its pairs. @param array<int, int> $made old template sub task id => new one */
@@ -136,8 +139,19 @@ class SubtaskPairs
             }
         });
         app(HandoffService::class)->forgetPairs();
+        $this->share(fn (SharedChecklist $shared) => $shared->syncCabinets($cabinets));
 
         return $got;
+    }
+
+    /** The lists of the Sub Tasks comparing follow their pairs (SharedChecklist); the progress of those that changed follows. */
+    private function share(\Closure $sync): void
+    {
+        $shared = app(SharedChecklist::class);
+        $sync($shared);
+        $progress = app(ProgressService::class);
+        CabinetSubtask::whereKey($shared->takeTouched())->get()->each(fn ($s) => $progress->recalculateSubtask($s));
+        PlanningBoard::touch();
     }
 
     private function row(int $to, int $from): array

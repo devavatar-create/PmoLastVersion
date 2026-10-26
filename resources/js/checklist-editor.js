@@ -4,6 +4,7 @@
 // POST /checklist-editor/{kind}/{id} (ChecklistEditor on the server checks who may and answers with the list as it now is).
 export default (cfg) => ({
     kind: cfg.kind,
+    ownerId: cfg.ownerId,
     url: cfg.url,
     items: cfg.items || [],
     editable: !!cfg.editable,
@@ -22,19 +23,49 @@ export default (cfg) => ({
     dialogPick: [],
     bulkDate: '',
     dragId: null,
+    pendingLive: null,      // a fresh list from the page (checklists-live) that came while this one was being edited
+
+    // the cabinet page keeps every list current (another department's change, a shared list): take it, unless mid-edit
+    init() {
+        if (this.kind !== 'subtask') return;
+        window.addEventListener('checklists-live', (e) => {
+            const l = e.detail.lists && e.detail.lists[this.ownerId];
+            if (!l) return;
+            this.pendingLive = l;
+            this.takeLive();
+        });
+        ['editing', 'paste', 'dialog', 'busy', 'dragId'].forEach((k) => this.$watch(k, () => this.takeLive()));
+    },
+    takeLive() {
+        if (!this.pendingLive || this.editing || this.paste || this.dialog || this.busy || this.dragId) return;
+        const l = this.pendingLive;
+        this.pendingLive = null;
+        this.items = l.items;
+        this.linked = l.linked || [];
+        this.selected = this.selected.filter((id) => this.items.some((i) => i.id === id));
+    },
+    changed() { window.dispatchEvent(new CustomEvent('checklist-changed')); },
 
     get doneCount() { return this.items.filter((i) => i.done).length; },
     get allSelected() { return this.items.length > 0 && this.selected.length === this.items.length; },
     isSelected(id) { return this.selected.includes(id); },
     toggleSelect(id) { this.selected = this.isSelected(id) ? this.selected.filter((x) => x !== id) : [...this.selected, id]; },
     toggleAll() { this.selected = this.allSelected ? [] : this.items.map((i) => i.id); },
-    // ---- comparing (template pairs): a row per item, the other list's item of the same name beside it ----
+    // ---- comparing (pairs): one list - a copy (item.from) sits beside the item it was made from; an own item of the same name
+    // (an older list, or a finished Sub Task that got no new items) beside that one ----
     norm(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); },
-    matchesOf(item) { const n = this.norm(item.name); return this.linked.flatMap((l) => l.items.filter((i) => this.norm(i.text) === n).map((i) => ({ ...i, l }))); },
-    get unmatched() {
-        const mine = new Set(this.items.map((i) => this.norm(i.name)));
-        return this.linked.flatMap((l) => l.items.filter((i) => !mine.has(this.norm(i.text))).map((i) => ({ ...i, l })));
+    get linkedIds() { return new Set(this.items.map((i) => i.from).filter(Boolean)); },
+    matchesOf(item) {
+        if (item.from) return this.linked.flatMap((l) => l.items.filter((i) => i.id === item.from).map((i) => ({ ...i, l })));
+        const n = this.norm(item.name), taken = this.linkedIds;
+        return this.linked.flatMap((l) => l.items.filter((i) => !taken.has(i.id) && this.norm(i.text) === n).map((i) => ({ ...i, l })));
     },
+    get unmatched() {
+        const taken = this.linkedIds, mine = new Set(this.items.filter((i) => !i.from).map((i) => this.norm(i.name)));
+        return this.linked.flatMap((l) => l.items.filter((i) => !taken.has(i.id) && !mine.has(this.norm(i.text))).map((i) => ({ ...i, l })));
+    },
+    // where a copy comes from (its name, place and removal are changed there)
+    fromOf(item) { const m = item.from && this.matchesOf(item)[0]; return m ? (m.l.deptName || '') + ' · ' + m.l.title : 'Sub Task ที่เทียบ'; },
     async addFromLinked(i) { await this.send({ type: 'add', items: [{ name: i.text }] }, { quiet: true, offerUndo: false }); },
     fmtDate(d) { if (!d) return ''; const [y, m, day] = d.split('-'); return day + '/' + m + '/' + (Number(y) + 543); },
 
@@ -53,6 +84,7 @@ export default (cfg) => ({
             this.items = data.items;
             this.selected = this.selected.filter((id) => this.items.some((i) => i.id === id));
             if (data.progress) window.dispatchEvent(new CustomEvent('checklist-progress', { detail: data.progress }));
+            this.changed();   // a shared list: the other Sub Task on this page follows at once
             if (offerUndo && data.undo) this.offerUndo(data.undo, data.message || 'บันทึกแล้ว');
             else if (!quiet && data.message) window.showToast(data.message);
             return data;
@@ -77,7 +109,7 @@ export default (cfg) => ({
 
     // ---- edit in place ----
     startEdit(item, field) {
-        if (!this.editable) return;
+        if (!this.editable || (field === 'name' && item.from)) return;
         this.editing = { id: item.id, field, value: field === 'date' ? (item.date || '') : (item[field] || '') };
         this.$nextTick(() => { const el = this.$root.querySelector('[data-edit-input]'); if (el) { el.focus(); if (el.select) el.select(); } });
     },
@@ -196,6 +228,7 @@ export default (cfg) => ({
             if (!res.ok) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
             item.doneBy = data.checklist.completed_by_name; item.doneAt = data.checklist.completed_at_formatted;
             window.dispatchEvent(new CustomEvent('checklist-progress', { detail: data }));
+            this.changed();
         } catch (e) {
             item.done = !done;
             window.showToast(e.message, 'error');
