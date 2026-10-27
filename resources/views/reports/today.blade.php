@@ -22,7 +22,7 @@
             บัญชีนี้ยังไม่ได้อยู่ในแผนกใด จึงยังไม่มีงานให้แสดง — ติดต่อผู้ดูแลระบบเพื่อกำหนดแผนก
         </div>
     @else
-    <div x-data="workSummary(@js(['summary' => $data, 'dataUrl' => route('reports.today.data'), 'pageUrl' => route('reports.today'), 'refreshSeconds' => $refreshSeconds]))"
+    <div x-data="workSummary(@js(['summary' => $data, 'dataUrl' => route('reports.today.data'), 'pageUrl' => route('reports.today'), 'acknowledgeUrl' => route('reports.today.acknowledge'), 'refreshSeconds' => $refreshSeconds]))"
          class="work-summary mx-auto flex w-full max-w-[1600px] flex-col gap-4 text-sm text-slate-800">
 
         {{-- the days shown (one, or a range), live state, and how to look at it --}}
@@ -121,10 +121,21 @@
                     <template x-for="department in summary.departments" :key="department.id">
                         <article @click="toggleFeedFilter(department.id)" @keydown.enter="toggleFeedFilter(department.id)" tabindex="0" role="button" :aria-pressed="feedFilter === department.id"
                                  class="cursor-pointer rounded-xl border bg-white p-4 shadow-sm transition duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-                                 :class="[feedFilter === department.id ? 'border-blue-600 ring-2 ring-blue-600' : 'border-slate-200 hover:border-slate-300', highlightedDepartments[department.id] ? 'bg-blue-50' : '', department.isQuiet && feedFilter !== department.id ? 'opacity-60' : '']">
-                            <header class="flex items-start justify-between gap-2">
-                                <h4 class="text-base font-semibold leading-snug text-slate-900"><span x-show="department.icon" x-text="department.icon + ' '"></span><span x-text="department.name"></span></h4>
-                                <span x-show="department.overdue" class="shrink-0 rounded-full bg-red-50 px-2.5 py-0.5 text-sm font-semibold text-red-700">⚠ เลยกำหนด <span x-text="department.overdue"></span></span>
+                                 :class="[feedFilter === department.id ? 'border-blue-600 ring-2 ring-blue-600' : (department.unacknowledged ? 'border-blue-200 hover:border-blue-300' : 'border-slate-200 hover:border-slate-300'), highlightedDepartments[department.id] ? 'bg-blue-50' : '', department.isQuiet && feedFilter !== department.id ? 'opacity-60' : '']">
+                            <header class="flex items-start gap-2">
+                                <h4 class="min-w-0 flex-1 text-base font-semibold leading-snug text-slate-900"><span x-show="department.icon" x-text="department.icon + ' '"></span><span x-text="department.name"></span></h4>
+                                <div class="flex shrink-0 items-center gap-2">
+                                    <span x-show="department.overdue" class="rounded-full bg-red-50 px-2.5 py-0.5 text-sm font-semibold text-red-700">⚠ เลยกำหนด <span x-text="department.overdue"></span></span>
+                                    {{-- งานเข้าใหม่: Sub Tasks that came in and nobody has opened from this page yet (is_active = 0). Blue like
+                                         every "งานเข้า" here, so it never reads as the red "เลยกำหนด" beside it; the count grows to the
+                                         right, off the bell; opens the list --}}
+                                    <button type="button" x-show="department.unacknowledged" @click.stop="openNewWork(department.id)" @keydown.enter.stop
+                                            :title="'งานเข้าใหม่ ' + department.unacknowledged + ' งาน — กดเพื่อดูรายการ'" :aria-label="'งานเข้าใหม่ ' + department.unacknowledged + ' งาน'"
+                                            class="relative mr-1 -mt-1 flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200 transition hover:bg-blue-100 hover:text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 00-4-5.7V5a2 2 0 10-4 0v.3C7.7 6.2 6 8.4 6 11v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                                        <span class="absolute -top-1.5 left-[22px] flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-blue-600 px-1.5 text-sm font-bold tabular-nums text-white ring-2 ring-white" x-text="department.unacknowledged > 99 ? '99+' : department.unacknowledged"></span>
+                                    </button>
+                                </div>
                             </header>
 
                             <div class="mt-2 grid grid-cols-2 gap-3">
@@ -174,10 +185,11 @@
 
 
                 <div x-show="viewMode === 'table'" x-cloak class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <table class="w-full min-w-[640px] text-left text-sm tabular-nums">
+                    <table class="w-full min-w-[720px] text-left text-sm tabular-nums">
                         <thead class="bg-slate-50 text-slate-600">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">แผนก</th>
+                                <th class="px-3 py-3 text-center font-semibold">งานเข้าใหม่</th>
                                 <th class="px-3 py-3 text-right font-semibold">งานเข้า</th>
                                 <th class="px-3 py-3 text-right font-semibold">ตู้</th>
                                 <th class="px-3 py-3 text-right font-semibold">เสร็จ</th>
@@ -191,6 +203,11 @@
                             <template x-for="department in summary.departments" :key="department.id">
                                 <tr :class="[department.isQuiet ? 'text-slate-400' : '', highlightedDepartments[department.id] ? 'bg-blue-50' : '']">
                                     <td class="px-4 py-2.5 font-medium" :class="department.isQuiet ? '' : 'text-slate-900'"><span x-show="department.icon" x-text="department.icon + ' '"></span><span x-text="department.name"></span></td>
+                                    <td class="px-3 py-2.5 text-center">
+                                        <button type="button" x-show="department.unacknowledged" @click="openNewWork(department.id)" title="กดเพื่อดูรายการ"
+                                                class="min-w-[2.5rem] rounded-full bg-blue-600 px-2.5 py-0.5 text-base font-bold text-white transition hover:bg-blue-700" x-text="department.unacknowledged"></button>
+                                        <span x-show="!department.unacknowledged">0</span>
+                                    </td>
                                     <td class="px-3 py-2.5 text-right text-base font-semibold" x-text="department.received"></td>
                                     <td class="px-3 py-2.5 text-right" x-text="department.receivedCabinets"></td>
                                     <td class="px-3 py-2.5 text-right text-base font-semibold" x-text="department.completed"></td>
@@ -204,6 +221,7 @@
                         <tfoot class="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-900">
                             <tr>
                                 <td class="px-4 py-3">รวม</td>
+                                <td class="px-3 py-3 text-center" :class="summary.totals.unacknowledged ? 'text-blue-700' : ''" x-text="summary.totals.unacknowledged"></td>
                                 <td class="px-3 py-3 text-right text-base" x-text="summary.totals.received"></td>
                                 <td class="px-3 py-3 text-right" x-text="summary.totals.receivedCabinets"></td>
                                 <td class="px-3 py-3 text-right text-base" x-text="summary.totals.completed"></td>
@@ -214,7 +232,7 @@
                             </tr>
                         </tfoot>
                     </table>
-                    <p class="border-t border-slate-100 px-4 py-2 text-sm text-slate-500">ตู้ = จำนวนตู้ของงานนั้น (นับตู้ละครั้ง) · รอรับ / กำลังทำ / เลยกำหนด = งานที่ค้างอยู่ตอนนี้</p>
+                    <p class="border-t border-slate-100 px-4 py-2 text-sm text-slate-500">งานเข้าใหม่ = งานที่ส่งเข้าแผนกแล้วยังไม่มีใครเปิดดูจากหน้านี้ · ตู้ = จำนวนตู้ของงานนั้น (นับตู้ละครั้ง) · รอรับ / กำลังทำ / เลยกำหนด = งานที่ค้างอยู่ตอนนี้</p>
                 </div>
 
                 <p x-show="!summary.departments.length" x-cloak class="rounded-xl border border-slate-200 bg-white p-6 text-center text-base text-slate-500">ยังไม่มีแผนกที่เปิดใช้งาน</p>
@@ -239,7 +257,7 @@
                             <ul>
                                 <template x-for="event in projectGroup.events" :key="event.key">
                                     <li class="transition-colors duration-700" :class="highlightedEvents[event.key] ? 'bg-blue-50' : ''">
-                                        <a :href="event.url" class="flex gap-3 px-4 py-1.5 hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none">
+                                        <a :href="event.url" @click="acknowledge(event)" @auxclick="acknowledge(event)" class="flex gap-3 px-4 py-1.5 hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none">
                                             <span class="shrink-0 pt-0.5 text-sm tabular-nums text-slate-500" :class="event.date ? 'w-14' : 'w-11'" :title="event.time ? '' : 'ไม่ทราบเวลา'">
                                                 <span x-show="event.date" class="block text-xs font-medium text-slate-600" x-text="event.date"></span>
                                                 <span x-text="event.time || '—'"></span>
@@ -247,6 +265,7 @@
                                             <div class="min-w-0 flex-1 text-sm">
                                                 <p class="flex flex-wrap items-center gap-x-2">
                                                     <span class="rounded px-1.5 py-0.5 font-semibold" :class="eventTagClass(event.type)" x-text="event.typeLabel"></span>
+                                                    <span x-show="event.isNew && event.type === 'received'" class="rounded-full bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white" title="ยังไม่มีใครเปิดดูงานนี้">ใหม่</span>
                                                     <span x-show="event.departmentId" class="font-medium text-slate-700" x-text="departmentName(event.departmentId)"></span>
                                                 </p>
                                                 <p class="mt-0.5 truncate text-slate-500" :title="eventDetail(event)" x-text="eventDetail(event)"></p>
@@ -263,6 +282,83 @@
                 </ol>
             </section>
         </div>
+
+        {{-- "งานเข้าใหม่": slides in from the right, from a department's bell --}}
+        <div class="fixed inset-0 z-50" :class="newWorkOpen ? '' : 'pointer-events-none'" @keydown.escape.window="newWorkOpen = false">
+            <div x-show="newWorkOpen" x-cloak x-transition.opacity.duration.200ms class="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px]" @click="newWorkOpen = false"></div>
+            <aside x-show="newWorkOpen" x-cloak role="dialog" aria-modal="true" aria-labelledby="new-work-title"
+                   x-transition:enter="transform transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+                   x-transition:leave="transform transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full"
+                   class="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-slate-50 shadow-2xl">
+                <header class="bg-gradient-to-br from-blue-600 to-blue-700 px-5 pb-4 pt-5 text-white">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-sm text-blue-100">ยังไม่มีใครเปิดดู · กดที่งานเพื่อรับทราบ</p>
+                            <h3 id="new-work-title" class="mt-0.5 text-2xl font-semibold">งานเข้าใหม่ <span class="tabular-nums" x-text="summary.totals.unacknowledged"></span> งาน</h3>
+                        </div>
+                        <button type="button" x-ref="newWorkClose" @click="newWorkOpen = false" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-blue-100 transition hover:bg-white/15 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white" aria-label="ปิด">
+                            <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    {{-- every department, or one --}}
+                    <div class="-mx-1 mt-4 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="แผนก">
+                        <button type="button" @click="newWorkDepartment = null" :aria-pressed="newWorkDepartment === null"
+                                class="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition"
+                                :class="newWorkDepartment === null ? 'bg-white text-blue-700 shadow' : 'bg-white/15 text-white hover:bg-white/25'">
+                            ทั้งหมด <span class="tabular-nums" x-text="summary.totals.unacknowledged"></span>
+                        </button>
+                        <template x-for="department in newWorkDepartments()" :key="department.id">
+                            <button type="button" @click="newWorkDepartment = department.id" :aria-pressed="newWorkDepartment === department.id"
+                                    class="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition"
+                                    :class="newWorkDepartment === department.id ? 'bg-white text-blue-700 shadow' : 'bg-white/15 text-white hover:bg-white/25'">
+                                <span class="max-w-[10rem] truncate" x-text="department.name"></span><span class="tabular-nums" x-text="department.unacknowledged"></span>
+                            </button>
+                        </template>
+                    </div>
+                </header>
+
+                <div class="flex-1 overflow-y-auto">
+                    <template x-for="group in newWorkGroups()" :key="group.key">
+                        <section>
+                            <h4 class="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/95 px-5 py-2.5 backdrop-blur">
+                                <span class="truncate text-sm font-semibold text-slate-800" x-text="group.title"></span>
+                                <span class="shrink-0 rounded-full bg-blue-600 px-2.5 py-0.5 text-xs font-bold tabular-nums text-white" x-text="group.total + ' งาน'"></span>
+                            </h4>
+                            <ul class="space-y-2 p-3">
+                                <template x-for="event in group.events" :key="event.key">
+                                    <li>
+                                        <a :href="event.url" @click="acknowledge(event)" @auxclick="acknowledge(event)"
+                                           class="group flex gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-px hover:border-blue-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+                                            <span class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full transition" :class="event.isNew ? 'bg-blue-600' : 'bg-slate-300'"></span>
+                                            <div class="min-w-0 flex-1">
+                                                <p class="truncate text-base font-semibold text-slate-900" :title="event.title" x-text="event.title"></p>
+                                                <p class="mt-0.5 truncate text-sm text-slate-600" :title="event.projectName" x-text="[event.projectNo, event.projectName].filter(Boolean).join(' · ') || 'ไม่ระบุโครงการ'"></p>
+                                                <p class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                                                    <span x-show="event.detail" class="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600" x-text="event.detail"></span>
+                                                    <span class="inline-flex items-center gap-1">
+                                                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                                        <span x-text="'เข้า ' + [event.date, event.time].filter(Boolean).join(' ')"></span>
+                                                    </span>
+                                                </p>
+                                            </div>
+                                            <svg class="mt-1 h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                                        </a>
+                                    </li>
+                                </template>
+                            </ul>
+                            <p x-show="group.total > group.events.length" class="px-5 pb-4 text-center text-xs text-slate-500" x-text="'แสดง ' + group.events.length + ' รายการล่าสุด จาก ' + group.total + ' งาน'"></p>
+                        </section>
+                    </template>
+                    <div x-show="!newWorkGroups().length" class="flex flex-col items-center px-6 py-16 text-center">
+                        <span class="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                            <svg class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        </span>
+                        <p class="mt-3 text-base font-semibold text-slate-800">เปิดดูงานเข้าครบแล้ว</p>
+                        <p class="mt-1 text-sm text-slate-500">งานที่ส่งเข้าแผนกใหม่จะขึ้นที่นี่</p>
+                    </div>
+                </div>
+            </aside>
+        </div>
     </div>
     @endif
 
@@ -274,6 +370,8 @@
             summary: config.summary,
             viewMode: 'cards',            // cards | table
             feedFilter: null,             // null (everything) | a department id | NEW_CABINET
+            newWorkOpen: false,           // the "งานเข้าใหม่" panel
+            newWorkDepartment: null,      // in it: null (every department) | one department id
             connection: 'ok',             // ok | error | expired
             datePicker: null,
             highlightedDepartments: {},
@@ -387,6 +485,30 @@
                 this.viewMode = mode;
                 try { localStorage.setItem('pmo_today_view', mode); } catch (error) { /* not remembered */ }
             },
+            /** "งานเข้าใหม่": the panel, with every department's work (null) or one department's */
+            openNewWork(departmentId) {
+                this.newWorkDepartment = departmentId;
+                this.newWorkOpen = true;
+                this.$nextTick(() => this.$refs.newWorkClose?.focus());
+            },
+            /** the departments with work not opened yet, most first */
+            newWorkDepartments() {
+                return this.summary.departments.filter((department) => department.unacknowledged)
+                    .sort((a, b) => b.unacknowledged - a.unacknowledged || a.name.localeCompare(b.name, 'th'));
+            },
+            newWorkOf(departmentId) {
+                return this.summary.newWork.filter((event) => event.departmentId === departmentId);
+            },
+            /** the panel's list: a heading per department, its work newest first (DailyWork lists at most NEW_WORK_LIMIT each) */
+            newWorkGroups() {
+                return this.newWorkDepartments()
+                    .filter((department) => this.newWorkDepartment === null || department.id === this.newWorkDepartment)
+                    .map((department) => ({
+                        key: 'department-' + department.id, title: (department.icon ? department.icon + ' ' : '') + department.name, total: department.unacknowledged,
+                        events: this.newWorkOf(department.id),
+                    }))
+                    .filter((group) => group.events.length);
+            },
             toggleFeedFilter(filter) {
                 this.feedFilter = this.feedFilter === filter ? null : filter;
             },
@@ -416,6 +538,22 @@
                     else groups.push({ key: 'project-' + event.key, projectNo: event.projectNo, projectName: event.projectName, events: [event] });
                 });
                 return groups;
+            },
+            /**
+             * Opening work that came in marks it seen (is_active = 1) for everyone. keepalive: the link leaves the page
+             * straight away; a new tab stays here, so the badges are taken off now and the counts fetched again.
+             */
+            acknowledge(event) {
+                if (!event.subtaskId || !event.isNew) return;
+                const markSeen = (list) => list.forEach((item) => { if (item.subtaskId === event.subtaskId) item.isNew = false; });
+                markSeen(this.summary.feed);
+                markSeen(this.summary.newWork);
+                fetch(config.acknowledgeUrl, {
+                    method: 'POST', keepalive: true,
+                    headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                    body: JSON.stringify({ subtask_id: event.subtaskId }),
+                }).then(() => this.fetchSummary(this.rangeQuery(this.summary.range.from, this.summary.range.to), true)).catch(() => { /* seen next time */ });
             },
             eventDetail(event) {
                 return [event.title, event.detail].filter(Boolean).join(' · ');

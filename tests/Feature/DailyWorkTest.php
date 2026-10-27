@@ -231,6 +231,53 @@ class DailyWorkTest extends TestCase
         $this->actingAs($this->user('member'))->get(route('reports.today'))->assertOk()->assertSee('ยังไม่ได้อยู่ในแผนกใด');
     }
 
+    public function test_new_work_is_flagged_until_someone_opens_it(): void
+    {
+        $work = $this->dayOfWork();
+        $work['seen'] = $this->subtask($this->production, 'ASSIGNED', ['assigned_at' => '2026-10-21 09:10', 'is_active' => true]);
+        $closedWork = CabinetSubtask::where('cabinet_task_id', $this->closedTask->id)->where('assignment_status', 'ASSIGNED')->first();
+
+        // Production holds 3 pending, 2 not opened yet; a closed project's work is not new work
+        $summary = app(DailyWork::class)->build(null, today());
+        $productionRow = collect($summary['departments'])->firstWhere('id', $this->production->id);
+        $this->assertSame([2, 0, 2], [$productionRow['unacknowledged'], collect($summary['departments'])->firstWhere('id', $this->shipping->id)['unacknowledged'], $summary['totals']['unacknowledged']]);
+        $this->assertSame(['new-'.$work['receivedToday']->id, 'new-'.$work['overdue']->id], array_column($summary['newWork'], 'key'), 'newest first');
+        $this->assertSame(['21 ต.ค.', true, $work['receivedToday']->id], [$summary['newWork'][0]['date'], $summary['newWork'][0]['isNew'], $summary['newWork'][0]['subtaskId']]);
+        $feed = collect($summary['feed'])->keyBy('key');
+        $this->assertSame([true, false], [$feed['received-'.$work['receivedToday']->id]['isNew'], $feed['received-'.$work['seen']->id]['isNew']]);
+
+        // another department, or a closed project: not marked
+        $shippingMember = $this->user('member', $this->shipping);
+        $this->actingAs($shippingMember)->postJson(route('reports.today.acknowledge'), ['subtask_id' => $work['receivedToday']->id])->assertNotFound();
+        $this->actingAs($this->user('admin'))->postJson(route('reports.today.acknowledge'), ['subtask_id' => $closedWork->id])->assertNotFound();
+        $this->assertFalse((bool) $work['receivedToday']->fresh()->is_active);
+        $this->assertFalse((bool) $closedWork->fresh()->is_active);
+
+        // its own department opens it: seen for everyone, nothing else touched
+        $updatedAt = $work['receivedToday']->fresh()->updated_at;
+        $this->travel(5)->minutes();
+        $this->actingAs($this->user('member', $this->production))->postJson(route('reports.today.acknowledge'), ['subtask_id' => $work['receivedToday']->id])
+            ->assertOk()->assertJson(['acknowledged' => true]);
+        $this->assertTrue((bool) $work['receivedToday']->fresh()->is_active);
+        $this->assertEquals($updatedAt, $work['receivedToday']->fresh()->updated_at);
+
+        $summary = app(DailyWork::class)->build(null, today());
+        $this->assertSame([1, ['new-'.$work['overdue']->id]], [$summary['totals']['unacknowledged'], array_column($summary['newWork'], 'key')]);
+        $this->assertFalse(collect($summary['feed'])->firstWhere('key', 'received-'.$work['receivedToday']->id)['isNew']);
+        $this->assertSame([], app(DailyWork::class)->build([], today())['newWork']);
+
+        // listed per department: a busy one does not push the others' out
+        $shippingWork = $this->subtask($this->shipping, 'ASSIGNED', ['assigned_at' => '2026-10-01 09:00']);
+        foreach (range(1, DailyWork::NEW_WORK_LIMIT + 3) as $extraTask) {
+            $this->subtask($this->production, 'ASSIGNED', ['assigned_at' => '2026-10-21 13:00']);
+        }
+        $summary = app(DailyWork::class)->build(null, today());
+        $listed = collect($summary['newWork'])->countBy('departmentId');
+        $this->assertSame([DailyWork::NEW_WORK_LIMIT, 1], [$listed[$this->production->id], $listed[$this->shipping->id]]);
+        $this->assertSame(DailyWork::NEW_WORK_LIMIT + 4, collect($summary['departments'])->firstWhere('id', $this->production->id)['unacknowledged'], 'the badge counts them all');
+        $this->assertContains('new-'.$shippingWork->id, array_column($summary['newWork'], 'key'));
+    }
+
     public function test_the_page_the_date_and_the_permission(): void
     {
         $this->dayOfWork();
