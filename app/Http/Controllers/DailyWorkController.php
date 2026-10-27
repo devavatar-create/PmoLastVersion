@@ -30,6 +30,15 @@ class DailyWorkController extends Controller
         return response()->json($this->summary($request, $dailyWork));
     }
 
+    /** opening work that came in marks it seen (DailyWork::acknowledge); 404 when it is not the viewer's or cannot be */
+    public function acknowledge(Request $request, DailyWork $dailyWork)
+    {
+        $subtaskId = $request->validate(['subtask_id' => ['required', 'integer']])['subtask_id'];
+        $acknowledged = $dailyWork->acknowledge(DepartmentDashboard::scopeFor($request->user()), (int) $subtaskId);
+
+        return response()->json(['acknowledged' => $acknowledged], $acknowledged ? 200 : 404);
+    }
+
     /** People outside the PMO see their own department only, whatever they ask for (DepartmentDashboard::scopeFor). */
     private function summary(Request $request, DailyWork $dailyWork): array
     {
