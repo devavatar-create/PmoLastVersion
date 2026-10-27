@@ -47,8 +47,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>รายงานสถานะโครงการ {{ $asOf->thaiDate() }}</title>
     <link rel="icon" type="image/png" href="{{ asset('images/logo.png') }}">
-    <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=anuphan:400,500,600,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ asset('fonts/anuphan/anuphan.css') }}">
     @vite(['resources/css/app.css'])
     <style>
         @page { size: A4; margin: 0; }

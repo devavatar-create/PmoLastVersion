@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ใบสั่งงาน {{ $department->name }} {{ $date->thaiDate() }}</title>
     {{-- A plain sheet for paper: no app layout, no scripts; the browser's print dialog opens on load. --}}
+    <link rel="stylesheet" href="{{ asset('fonts/anuphan/anuphan.css') }}">
     <style>
         :root { --ink: #0f172a; --muted: #64748b; --line: #cbd5e1; }
         * { box-sizing: border-box; }
-        body { margin: 0; padding: 24px; font: 13px/1.5 system-ui, -apple-system, "Sarabun", sans-serif; color: var(--ink); background: #fff; }
+        body { margin: 0; padding: 24px; font: 13px/1.5 "Anuphan", "Sarabun", "Noto Sans Thai", "Leelawadee UI", system-ui, sans-serif; color: var(--ink); background: #fff; }
         h1 { font-size: 20px; margin: 0; }
         .meta { color: var(--muted); margin: 4px 0 16px; }
         .project { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; break-inside: avoid; }
