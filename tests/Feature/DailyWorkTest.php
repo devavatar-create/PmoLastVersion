@@ -120,6 +120,7 @@ class DailyWorkTest extends TestCase
         $this->assertSame('11:15', $feed['completed-'.$work['completedByChecklist']->id]['time'], 'timed by the last tick');
         $this->assertSame('08:10', $feed['accepted-'.$work['overdue']->id]['time']);
         $this->assertSame(['SO-OPEN', 'P SO-OPEN'], [$feed['accepted-'.$work['overdue']->id]['projectNo'], $feed['accepted-'.$work['overdue']->id]['projectName']]);
+        $this->assertSame(route('cabinets.show', $this->task->cabinet_id).'#goto-subtask-'.$work['overdue']->id, $feed['accepted-'.$work['overdue']->id]['url'], 'opens the cabinet at that Sub Task');
         $this->assertArrayNotHasKey('completed-'.$work['completedYesterday']->id, $feed->all());
     }
 
@@ -146,6 +147,7 @@ class DailyWorkTest extends TestCase
         $newCabinetEvents = array_values(array_filter($summary['feed'], fn ($event) => $event['type'] === DailyWork::EVENT_NEW_CABINET));
         $this->assertSame(['13:40', '13:20'], array_column($newCabinetEvents, 'time'));
         $this->assertSame(['Cab', '3 ตู้ · MO-SO-NEW', 'P SO-NEW', null], [$newCabinetEvents[1]['title'], $newCabinetEvents[1]['detail'], $newCabinetEvents[1]['projectName'], $newCabinetEvents[1]['departmentId']]);
+        $this->assertSame(route('cabinets.show', $newProjectTask->cabinet_id), $newCabinetEvents[1]['url'], 'a new cabinet opens at its top');
         $this->assertSame(0, app(DailyWork::class)->build(null, Carbon::parse('2026-10-20'))['totals']['newCabinetQuantity']);
 
         // a busy day does not push them out of the feed
@@ -243,6 +245,7 @@ class DailyWorkTest extends TestCase
         $this->assertSame([2, 0, 2], [$productionRow['unacknowledged'], collect($summary['departments'])->firstWhere('id', $this->shipping->id)['unacknowledged'], $summary['totals']['unacknowledged']]);
         $this->assertSame(['new-'.$work['receivedToday']->id, 'new-'.$work['overdue']->id], array_column($summary['newWork'], 'key'), 'newest first');
         $this->assertSame(['21 ต.ค.', true, $work['receivedToday']->id], [$summary['newWork'][0]['date'], $summary['newWork'][0]['isNew'], $summary['newWork'][0]['subtaskId']]);
+        $this->assertStringEndsWith('#goto-subtask-'.$work['receivedToday']->id, $summary['newWork'][0]['url']);
         $feed = collect($summary['feed'])->keyBy('key');
         $this->assertSame([true, false], [$feed['received-'.$work['receivedToday']->id]['isNew'], $feed['received-'.$work['seen']->id]['isNew']]);
 
