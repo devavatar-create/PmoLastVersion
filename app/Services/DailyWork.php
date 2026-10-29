@@ -409,7 +409,10 @@ class DailyWork
             ->values()->all();
     }
 
-    /** one line of work in the feed; isNew = nobody has opened it from this page yet ("มีงานเข้า") */
+    /**
+     * one line of work in the feed; isNew = nobody has opened it from this page yet ("มีงานเข้า"). Its link opens the
+     * cabinet at that Sub Task (#goto-subtask-{id}: the cabinet page starts at its top, then scrolls down and opens it)
+     */
     private function workEvent(CabinetSubtask $subtask, string $type, ?Carbon $at, bool $hasTime, ?string $date): array
     {
         $cabinet = $subtask->cabinetTask?->cabinet;
@@ -425,7 +428,7 @@ class DailyWork
             'projectNo' => (string) $cabinet?->project?->project_no,
             'projectName' => (string) $cabinet?->project?->project_name,
             'detail' => (string) ($cabinet?->mo_no ?: $cabinet?->cabinet_name),
-            'url' => $cabinet ? route('cabinets.show', $cabinet->id) : null,
+            'url' => $cabinet ? route('cabinets.show', $cabinet->id).'#goto-subtask-'.$subtask->id : null,
             'subtaskId' => $subtask->id,
             'isNew' => ! $subtask->is_active,
         ];

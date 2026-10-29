@@ -162,11 +162,19 @@
 
                             <div class="border-t border-slate-100 divide-y divide-slate-100">
                                 @forelse ($task->subtasks as $subtask)
-                                    {{-- opens by itself when a link points at it (alerts, notifications: #subtask-{id}) --}}
+                                    {{-- opens by itself when a link points at it (alerts, notifications: #subtask-{id}; สรุปงาน: #goto-subtask-{id}) --}}
                                     <details class="pl-12 pr-5 py-3 border-l-2 border-slate-100 ml-5 scroll-mt-20" id="subtask-{{ $subtask->id }}"
-                                             x-data x-init="if (location.hash === '#subtask-{{ $subtask->id }}') $el.open = true">
+                                             x-data="linkedSubtask({{ $subtask->id }})">
                                         <summary class="list-none cursor-pointer flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                                             <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 sm:min-w-[22rem] flex-1">
+                                                {{-- the one a link from สรุปงาน came to: marked for a few seconds --}}
+                                                <span x-show="marked" x-cloak x-transition.opacity.duration.500ms class="relative inline-flex h-6 w-6 shrink-0 items-center justify-center" title="หัวข้อที่ลิงก์มา">
+                                                    <span class="absolute inset-0 rounded-full bg-blue-600 opacity-75 motion-safe:animate-ping"></span>
+                                                    <span class="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white">
+                                                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                                                    </span>
+                                                    <span class="sr-only">หัวข้อที่ลิงก์มา</span>
+                                                </span>
                                                 <span class="text-sm font-medium text-slate-800 min-w-[10rem] max-w-xs">{{ $subtask->name }}</span>
                                                 <x-status-badge :status="$subtask->status" id="subtask-{{ $subtask->id }}" />
                                                 <div class="flex flex-wrap items-center gap-2" data-assignment="{{ $subtask->id }}" data-no-step-bar @click.stop>
@@ -395,6 +403,27 @@
             document.addEventListener('visibilitychange', check);
             window.addEventListener('checklist-changed', () => setTimeout(check, 200));
         })();
+
+        // one Sub Task (x-data): a link to it opens it. #subtask-{id} goes straight there (the browser's own jump);
+        // #goto-subtask-{id} (from สรุปงาน) shows the top of the page first, then scrolls down to it, its name marked for
+        // a few seconds (marked). The address is left with the plain #subtask-{id}, so a reload or a copied link goes
+        // straight there.
+        function linkedSubtask(id) {
+            return {
+                marked: false,
+                init() {
+                    const el = this.$el;
+                    if (location.hash === '#subtask-' + id) { el.open = true; return; }
+                    if (location.hash !== '#goto-subtask-' + id) return;
+                    el.open = true;
+                    this.marked = true;
+                    history.replaceState(history.state, '', '#subtask-' + id);
+                    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+                    setTimeout(() => el.scrollIntoView({ behavior, block: 'start' }), 400);
+                    setTimeout(() => { this.marked = false; }, 8000);
+                },
+            };
+        }
 
         // the checklist editor (x-checklist-editor) reports every change: the Sub Task / Task / cabinet bars follow
         window.addEventListener('checklist-progress', (e) => {
